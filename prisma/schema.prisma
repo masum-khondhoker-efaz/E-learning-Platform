@@ -1,0 +1,414 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String   @unique @db.ObjectId
+  isSuperAdmin Boolean  @default(false)
+  systemOwner  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("admins")
+}
+
+model Chat {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  senderId   String   @db.ObjectId
+  receiverId String?  @db.ObjectId // Nullable for group chats
+  roomId     String   @db.ObjectId
+  message    String
+  images     String[]
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  sender   User  @relation("SenderRelation", fields: [senderId], references: [id])
+  receiver User? @relation("ReceiverRelation", fields: [receiverId], references: [id]) // Optional for group chats
+  room     Room  @relation(fields: [roomId], references: [id])
+
+  @@map("chats")
+}
+
+model Faq {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  question  String
+  answer    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("faqs")
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  title     String
+  body      String
+  data      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model Payment {
+  id                   String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String        @db.ObjectId
+  stripeSubscriptionId String?
+  paymentIntentId      String?
+  paymentMethodId      String?
+  paymentAmount        Float
+  bookingId            String?       @db.ObjectId
+  paymentDate          DateTime      @default(now())
+  amountProvider       String
+  amountReceiver       String?
+  invoiceId            String?
+  status               PaymentStatus @default(PENDING)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("payments")
+}
+
+model PrivacyPolicy {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  heading   String?
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("privacy_policies")
+}
+
+model Reply {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String      @db.ObjectId
+  supportId String?     @db.ObjectId
+  reportId  String?     @db.ObjectId
+  message   String
+  type      ReplyType   @default(SUPPORT)
+  status    ReplyStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relationships
+  support Support? @relation(fields: [supportId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
+
+  @@map("replies")
+}
+
+model Review {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String   @db.ObjectId
+  barberId      String   @db.ObjectId
+  saloonOwnerId String   @db.ObjectId
+  bookingId     String   @db.ObjectId
+  rating        Int
+  comment       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("reviews")
+}
+
+model Room {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  type             RoomType @default(ONE_TO_ONE) // Type: One-to-one or Group chat
+  groupName        String? // Name of the group (for group chats)
+  groupDescription String? // Description of the group (for group chats)
+  groupImage       String? // Image of the group (for group chats)
+  senderId         String?  @db.ObjectId
+  receiverId       String?  @db.ObjectId
+  creatorId        String?  @db.ObjectId
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relationships
+  sender   User? @relation("SenderRelation", fields: [senderId], references: [id])
+  receiver User? @relation("ReceiverRelation", fields: [receiverId], references: [id])
+  creator  User? @relation("CreatorRelation", fields: [creatorId], references: [id])
+
+  participants RoomUser[] // Relationship to participants (RoomUser table)
+  chat         Chat[]
+
+  @@map("rooms")
+}
+
+model RoomUser {
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  roomId String @db.ObjectId
+  userId String @db.ObjectId
+
+  // Relationships
+  room Room @relation(fields: [roomId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, roomId])
+  @@map("room_users")
+}
+
+model Service {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  saloonOwnerId String      @db.ObjectId
+  // saloonId      String      @db.ObjectId
+  serviceName   String
+  availableTo   AvailableTO @default(EVERYONE) // Who can book this service
+  price         Float
+  duration      Int // Duration in minutes
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relationships
+  user User @relation(fields: [saloonOwnerId], references: [id])
+
+  @@map("services")
+}
+
+model Support {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String        @db.ObjectId
+  userName      String
+  subject       String?
+  message       String
+  status        SupportStatus @default(OPEN)
+  type          SupportType
+  saloonOwnerId String?       @db.ObjectId
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  Reply Reply[]
+
+  @@map("supports")
+}
+
+model TermAndCondition {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  heading   String?
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("terms_and_conditions")
+}
+
+model User {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  fullName             String
+  email                String                 @unique
+  password             String?
+  role                 UserRoleEnum           @default(CUSTOMER)
+  status               UserStatus             @default(PENDING)
+  isProfileComplete    Boolean                @default(false)
+  address              String?
+  isLoggedIn           Boolean                @default(false)
+  image                String?
+  phoneNumber          String?
+  dateOfBirth          String?
+  gender               String?
+  otp                  Int?
+  otpExpiry            DateTime?
+  plateForm            PlatFormType?
+  fcmToken             String?
+  fcmTokenEx           String?
+  stripeCustomerId     String?
+  stripeAccountUrl     String?
+  stripeAccountId      String?
+  stripeSubscriptionId String?
+  onBoarding           Boolean                @default(false)
+  subscriptionPlan     SubscriptionPlanStatus @default(FREE)
+  isSubscribed         Boolean                @default(false)
+  subscriptionEnd      DateTime?
+  followerCount        Int                    @default(0)
+  followingCount       Int                    @default(0)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  // Relationships
+  roomsSent        Room[]     @relation("SenderRelation")
+  roomsReceived    Room[]     @relation("ReceiverRelation")
+  roomParticipants RoomUser[]
+  chatsSent        Chat[]     @relation("SenderRelation")
+  chatsReceived    Chat[]     @relation("ReceiverRelation")
+
+  createdRooms Room[] @relation("CreatorRelation")
+
+  Review Review[]
+
+  Service          Service[]
+  Faq              Faq[]
+  TermAndCondition TermAndCondition[]
+  PrivacyPolicy    PrivacyPolicy[]
+  Admin            Admin[]
+
+  Support      Support[]
+  Reply        Reply[]
+  Notification Notification[]
+  Payment      Payment[]
+
+  @@map("users")
+}
+
+enum AvailableTO {
+  EVERYONE
+  MALE
+  FEMALE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  RESCHEDULED
+  NO_SHOW
+  REFUNDED
+}
+
+enum JobApplicationStatus {
+  PENDING
+  ONGOING
+  COMPLETED
+  REJECTED
+}
+
+enum LoyaltySchemeType {
+  VISIT_BASED // Points per visit
+  SPENDING_BASED // Points per $ spent
+  SERVICE_BASED // Points for specific services
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CASH
+  EXPIRED
+  REFUNDED
+  REQUIRES_CAPTURE
+  CANCELLED
+}
+
+enum PlatFormType {
+  GOOGLE
+  FACEBOOK
+  APPLE
+}
+
+enum QRCodeType {
+  SALOON_REGISTRATION // For saloon owner registration
+  BARBER_PROFILE // Links to barber profile
+  SALOON_PROFILE // Links to saloon profile
+  PROMOTION // For special offers
+  PAYMENT // For quick payments
+  CHECK_IN // For customer check-ins
+  LOYALTY // For loyalty programs
+}
+
+enum QueueStatus {
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum RedemptionStatus {
+  PENDING
+  APPLIED
+  EXPIRED
+  CANCELLED
+}
+
+enum ReplyStatus {
+  PENDING
+  IGNORED
+  RESOLVED
+  CLOSED
+}
+
+enum ReplyType {
+  SUPPORT
+  REPORT
+}
+
+enum RoomType {
+  ONE_TO_ONE
+  GROUP
+}
+
+enum SubscriptionPlanStatus {
+  FREE
+  BASIC_PREMIUM
+  ADVANCED_PREMIUM
+  PRO_PREMIUM
+}
+
+enum SubscriptionType {
+  WEEKLY
+  MONTHLY
+  YEARLY
+  LIFETIME
+}
+
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportType {
+  CUSTOMER_QUESTION
+  CUSTOMER_COMPLAINT
+}
+
+enum UserRoleEnum {
+  CUSTOMER
+  ADMIN
+  SUPER_ADMIN
+  BARBER
+  SALOON_OWNER
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING
+  BLOCKED
+}
