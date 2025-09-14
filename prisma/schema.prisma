@@ -7,6 +7,52 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                String        @id @default(auto()) @map("_id") @db.ObjectId
+  fullName          String
+  email             String        @unique
+  password          String?
+  role              UserRoleEnum  @default(CUSTOMER)
+  status            UserStatus    @default(PENDING)
+  isVerified        Boolean       @default(false)
+  isProfileComplete Boolean       @default(false)
+  address           String?
+  isLoggedIn        Boolean       @default(false)
+  image             String?
+  phoneNumber       String?
+  dateOfBirth       String?
+  gender            String?
+  otp               Int?
+  otpExpiry         DateTime?
+  plateForm         PlatFormType?
+  fcmToken          String?
+  fcmTokenEx        String?
+  stripeCustomerId  String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relationships
+  roomsSent        Room[]             @relation("SenderRelation")
+  roomsReceived    Room[]             @relation("ReceiverRelation")
+  roomParticipants RoomUser[]
+  chatsSent        Chat[]             @relation("SenderRelation")
+  chatsReceived    Chat[]             @relation("ReceiverRelation")
+  createdRooms     Room[]             @relation("CreatorRelation")
+  Review           Review[]
+  Faq              Faq[]
+  TermAndCondition TermAndCondition[]
+  PrivacyPolicy    PrivacyPolicy[]
+  Admin            Admin[]
+  Support          Support[]
+  Reply            Reply[]
+  Notification     Notification[]
+  Payment          Payment[]
+  Company          Company[]
+  Category         Category[]
+
+  @@map("users")
+}
+
 model Admin {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   userId       String   @unique @db.ObjectId
@@ -19,6 +65,93 @@ model Admin {
   user User @relation(fields: [userId], references: [id])
 
   @@map("admins")
+}
+
+model Company {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String   @db.ObjectId
+  companyName    String
+  companyAddress String
+  vatId          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("companies")
+}
+
+model Category {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user   User     @relation(fields: [userId], references: [id])
+  Course Course[]
+
+  @@map("categories")
+}
+
+model Course {
+  id                     String   @id @default(auto()) @map("_id") @db.ObjectId
+  courseTitle            String
+  courseShortDescription String
+  courseDescription      String
+  courseLevel            String
+  categoryId             String   @db.ObjectId
+  certificate            Boolean  @default(false)
+  lifetimeAccess         Boolean  @default(false)
+  price                  Float
+  discountPrice          Float    @default(0)
+  instructorName         String
+  instructorImage        String
+  instructorDesignation  String
+  instructorDescription  String
+  courseThumbnail        String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  // Relationships
+  category Category  @relation(fields: [categoryId], references: [id])
+  Section  Section[]
+
+  @@map("courses")
+}
+
+model Section {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  courseId  String   @db.ObjectId
+  title     String
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Lesson    Lesson[]
+
+  // Relationships
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([courseId, order])
+  @@map("sections")
+}
+
+model Lesson {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  sectionId String   @db.ObjectId
+  title     String
+  content   String
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  section Section @relation(fields: [sectionId], references: [id])
+
+  @@unique([sectionId, order])
+  @@map("lessons")
 }
 
 model Chat {
@@ -176,24 +309,6 @@ model RoomUser {
   @@map("room_users")
 }
 
-model Service {
-  id            String      @id @default(auto()) @map("_id") @db.ObjectId
-  saloonOwnerId String      @db.ObjectId
-  // saloonId      String      @db.ObjectId
-  serviceName   String
-  availableTo   AvailableTO @default(EVERYONE) // Who can book this service
-  price         Float
-  duration      Int // Duration in minutes
-  isActive      Boolean     @default(true)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-
-  // Relationships
-  user User @relation(fields: [saloonOwnerId], references: [id])
-
-  @@map("services")
-}
-
 model Support {
   id            String        @id @default(auto()) @map("_id") @db.ObjectId
   userId        String        @db.ObjectId
@@ -226,63 +341,6 @@ model TermAndCondition {
   user User @relation(fields: [userId], references: [id])
 
   @@map("terms_and_conditions")
-}
-
-model User {
-  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
-  fullName             String
-  email                String                 @unique
-  password             String?
-  role                 UserRoleEnum           @default(CUSTOMER)
-  status               UserStatus             @default(PENDING)
-  isProfileComplete    Boolean                @default(false)
-  address              String?
-  isLoggedIn           Boolean                @default(false)
-  image                String?
-  phoneNumber          String?
-  dateOfBirth          String?
-  gender               String?
-  otp                  Int?
-  otpExpiry            DateTime?
-  plateForm            PlatFormType?
-  fcmToken             String?
-  fcmTokenEx           String?
-  stripeCustomerId     String?
-  stripeAccountUrl     String?
-  stripeAccountId      String?
-  stripeSubscriptionId String?
-  onBoarding           Boolean                @default(false)
-  subscriptionPlan     SubscriptionPlanStatus @default(FREE)
-  isSubscribed         Boolean                @default(false)
-  subscriptionEnd      DateTime?
-  followerCount        Int                    @default(0)
-  followingCount       Int                    @default(0)
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
-
-  // Relationships
-  roomsSent        Room[]     @relation("SenderRelation")
-  roomsReceived    Room[]     @relation("ReceiverRelation")
-  roomParticipants RoomUser[]
-  chatsSent        Chat[]     @relation("SenderRelation")
-  chatsReceived    Chat[]     @relation("ReceiverRelation")
-
-  createdRooms Room[] @relation("CreatorRelation")
-
-  Review Review[]
-
-  Service          Service[]
-  Faq              Faq[]
-  TermAndCondition TermAndCondition[]
-  PrivacyPolicy    PrivacyPolicy[]
-  Admin            Admin[]
-
-  Support      Support[]
-  Reply        Reply[]
-  Notification Notification[]
-  Payment      Payment[]
-
-  @@map("users")
 }
 
 enum AvailableTO {

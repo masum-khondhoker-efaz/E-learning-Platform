@@ -9,10 +9,7 @@
     "build": "tsc",
     "postinstall": "prisma generate",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "generate-module": "node src/app/scripts/generate-module.js ",
-    "prisma:merge": "prisma-merge -b prisma/schema/base.prisma -s prisma/schema/**/*.prisma -o prisma/schema.prisma",
-    "prisma:generate": "npm run prisma:merge && npx prisma generate",
-    "prisma:push": "npm run prisma:merge && npx prisma db push"
+    "generate-module": "node src/app/scripts/generate-module.js "
   },
   "keywords": [],
   "author": "",

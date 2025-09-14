@@ -41,12 +41,12 @@ const auth = (...roles: string[]) => {
           'User is not active. Please contact support.',
         );
       }
-      if (!user.isProfileComplete) {
-        throw new AppError(
-          httpStatus.FORBIDDEN,
-          'Please complete your profile to proceed.',
-        );
-      }
+      // if (!user.isProfileComplete) {
+      //   throw new AppError(
+      //     httpStatus.FORBIDDEN,
+      //     'Please complete your profile to proceed.',
+      //   );
+      // }
 
       // Role-based access check
       if (roles.length && !roles.includes(user.role)) {

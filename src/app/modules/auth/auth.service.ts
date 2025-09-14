@@ -30,15 +30,16 @@ const loginUserFromDB = async (payload: {
   if (!isCorrectPassword) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Password incorrect');
   }
-  if (
-    userData.isProfileComplete === false ||
-    userData.isProfileComplete === null
-  ) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      'Please complete your profile before logging in',
-    );
-  }
+  // if (
+  //   userData.isProfileComplete === false ||
+  //   userData.isProfileComplete === null
+  // ) {
+  //   throw new AppError(
+  //     httpStatus.BAD_REQUEST,
+  //     'Please complete your profile before logging in',
+  //   );
+  // }
+
   if (userData.status === UserStatus.BLOCKED) {
     throw new AppError(
       httpStatus.FORBIDDEN,
@@ -85,7 +86,6 @@ const loginUserFromDB = async (payload: {
     image: userData.image,
     accessToken: accessToken,
     refreshToken: refreshedToken,
-    isProfileComplete: userData.isProfileComplete,
   };
 };
 

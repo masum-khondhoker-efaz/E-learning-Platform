@@ -11,10 +11,12 @@ const registerUser = z.object({
       .email({
         message: 'Invalid email format!',
       }),
+    dateOfBirth: z.string({
+      required_error: 'Date of birth is required!',
+    }),
     password: z.string({
       required_error: 'Password is required!',
     }),
-   
   }),
 });
 
@@ -103,6 +105,9 @@ const verifyOtpSchema = z.object({
     otp: z.number({
       required_error: 'OTP is required!',
     }),
+    otpToken: z.string({
+      required_error: 'OTP token is required!',
+    }),
   }),
 });
 
@@ -132,13 +137,8 @@ const socialLoginSchema = z.object({
     }),
     image: z.string().optional(),
     address: z.string().optional(),
-    role: z.enum(['CUSTOMER', 'SALOON_OWNER', 'BARBER'], {
-      required_error: 'Role is required!',
-    }),
   }),
 });
-
-
 
 export const UserValidations = {
   registerUser,

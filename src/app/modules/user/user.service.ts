@@ -8,6 +8,8 @@ import emailSender from '../../utils/emailSender';
 import { generateToken, refreshToken } from '../../utils/generateToken';
 import prisma from '../../utils/prisma';
 import Stripe from 'stripe';
+import generateOtpToken from '../../utils/generateOtpToken';
+import verifyOtp from '../../utils/verifyOtp';
 
 // Initialize Stripe with your secret API key
 const stripe = new Stripe(config.stripe.stripe_secret_key as string, {
@@ -19,154 +21,126 @@ interface UserWithOptionalPassword extends Omit<User, 'password'> {
 }
 
 const registerUserIntoDB = async (payload: any) => {
+  // check existing user
   if (payload.email) {
     const existingUser = await prisma.user.findUnique({
-      where: {
-        email: payload.email,
-      },
+      where: { email: payload.email },
     });
     if (existingUser) {
       throw new AppError(httpStatus.CONFLICT, 'User already exists!');
     }
   }
 
-  const hashedPassword: string = await bcrypt.hash(payload.password, 12);
+  // hash password
+  const hashedPassword = await bcrypt.hash(payload.password, 12);
 
-  const userData = {
-    ...payload,
-    password: hashedPassword,
-  
-  };
-
-  const result = await prisma.$transaction(async (transactionClient: any) => {
-    const user = await transactionClient.user.create({
-      data: userData,
-    });
-    if (!user) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'User not created!');
-    }
-  });
-
-  // return login;
-  const otp = Math.floor(100000 + Math.random() * 900000);
-  const otpExpiresAt = new Date();
-  otpExpiresAt.setMinutes(otpExpiresAt.getMinutes() + 5);
-  const otpExpiresAtString = otpExpiresAt.toISOString();
-
-  await prisma.user.update({
-    where: { email: payload.email },
+  // create user
+  const user = await prisma.user.create({
     data: {
-      otp: otp,
-      otpExpiry: otpExpiresAtString,
+      ...payload,
+      password: hashedPassword,
+      isVerified: false, // mark as unverified until OTP confirmed
     },
   });
 
+  if (!user) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'User not created!');
+  }
+
+  // generate OTP + JWT token
+  const { otp, otpToken } = generateOtpToken(user.email);
+
+  // send OTP email
   await emailSender(
     'Verify Your Email',
-    userData.email!,
-
+    user.email,
     `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-    <table width="100%" style="border-collapse: collapse;">
-    <tr>
-      <td style="background-color: #E98F5A; padding: 20px; text-align: center; color: #000000; border-radius: 10px 10px 0 0;">
-        <h2 style="margin: 0; font-size: 24px;">Verify your email</h2>
-      </td>
-    </tr>
-    <tr>
-
-      <td style="padding: 20px;">
-        <p style="font-size: 16px; margin: 0;">Hello <strong>${
-          userData.fullName
-        }</strong>,</p>
-        <p style="font-size: 16px;">Please verify your email.</p>
-        <div style="text-align: center; margin: 20px 0;">
-          <p style="font-size: 18px;" >Verify email using this OTP: <span style="font-weight:bold"> ${otp} </span><br/> This OTP will be Expired in 5 minutes,</p>
-        </div>
-        <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email. No further action is needed.</p>
-        <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
-      </td>
-    </tr>
-    <tr>
-      <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-        <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Team. All rights reserved.</p>
-      </td>
-    </tr>
-    </table>
-  </div>
-
-      `,
+        <table width="100%" style="border-collapse: collapse;">
+          <tr>
+            <td style="background-color: #46BEF2; padding: 20px; text-align: center; color: #000000; border-radius: 10px 10px 0 0;">
+              <h2 style="margin: 0; font-size: 24px;">Verify your email</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px;">
+              <p style="font-size: 16px; margin: 0;">Hello <strong>${user.fullName}</strong>,</p>
+              <p style="font-size: 16px;">Please verify your email.</p>
+              <div style="text-align: center; margin: 20px 0;">
+                <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otp}</span><br/> This OTP will expire in 5 minutes.</p>
+              </div>
+              <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email.</p>
+              <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
+              <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Team. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </div>`,
   );
-  return { message: 'OTP sent via your email successfully' };
+
+  return {
+    message: 'OTP sent via email successfully',
+    otpToken, // return to client for verification step
+  };
 };
 
 //resend verification email
 const resendUserVerificationEmail = async (email: string) => {
   const userData = await prisma.user.findUnique({
-    where: { email: email },
+    where: { email },
   });
 
   if (!userData) {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
   }
-  const otp = Math.floor(100000 + Math.random() * 900000);
-  const otpExpiresAt = new Date();
-  otpExpiresAt.setMinutes(otpExpiresAt.getMinutes() + 5);
-  const otpExpiresAtString = otpExpiresAt.toISOString();
 
-  await prisma.user.update({
-    where: { email: email },
-    data: {
-      otp: otp,
-      otpExpiry: otpExpiresAtString,
-    },
-  });
   if (!userData.email) {
     throw new AppError(httpStatus.CONFLICT, 'Email not set for this user');
   }
 
+  // ✅ Generate OTP and token
+  const otpToken = generateOtpToken(userData.email);
+
+  // ✅ Send email with OTP
   await emailSender(
     'Verify Your Email',
-    userData.email,
-
-    `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #000000; border-radius: 10px;">
-    <table width="100%" style="border-collapse: collapse;">
-    <tr>
-      <td style="background-color: #E98F5A; padding: 20px; text-align: center; color: #f5f5f5; border-radius: 10px 10px 0 0;">
-        <h2 style="margin: 0; font-size: 24px;">Verify Your Email</h2>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding: 20px;">
-        <p style="font-size: 16px; margin: 0;">Hello <strong>${
-          userData.fullName
-        }</strong>,</p>
-        <p style="font-size: 16px;">Please verify your email.</p>
-        <div style="text-align: center; margin: 20px 0;">
-          <p style="font-size: 18px;" >Verify email using this OTP: <span style="font-weight:bold"> ${otp} </span><br/> This OTP will be Expired in 5 minutes,</p>
-        </div>
-        <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email. No further action is needed.</p>
-        <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
-      </td>
-    </tr>
-    <tr>
-      <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-        <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Time Team. All rights reserved.</p>
-      </td>
-    </tr>
-    </table>
-  </div>
-
-      `,
+    email,
+    `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+        <table width="100%" style="border-collapse: collapse;">
+          <tr>
+            <td style="background-color: #46BEF2; padding: 20px; text-align: center; color: #000000; border-radius: 10px 10px 0 0;">
+              <h2 style="margin: 0; font-size: 24px;">Verify your email</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px;">
+              <p style="font-size: 16px; margin: 0;">Hello <strong>${userData.fullName}</strong>,</p>
+              <p style="font-size: 16px;">Please verify your email.</p>
+              <div style="text-align: center; margin: 20px 0;">
+                <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otpToken.otp}</span><br/> This OTP will expire in 5 minutes.</p>
+              </div>
+              <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email.</p>
+              <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
+              <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Team. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </div>`,
   );
 
-  return { message: 'OTP sent via your email successfully' };
+  // ✅ Return token for frontend to verify later
+  return {
+    message: 'OTP sent via your email successfully',
+    otpToken, // frontend must keep this for verification
+  };
 };
-
-
-
-
-
-
 
 const getMyProfileFromDB = async (id: string) => {
   const Profile = await prisma.user.findUniqueOrThrow({
@@ -181,8 +155,6 @@ const getMyProfileFromDB = async (id: string) => {
       dateOfBirth: true,
       phoneNumber: true,
       address: true,
-      followerCount: true,
-      followingCount: true,
       image: true,
       createdAt: true,
       updatedAt: true,
@@ -294,72 +266,60 @@ const changePassword = async (
 
 const forgotPassword = async (payload: { email: string }) => {
   const userData = await prisma.user.findUnique({
-    where: {
-      email: payload.email,
-    },
+    where: { email: payload.email },
   });
 
   if (!userData) {
-    throw new AppError(httpStatus.CONFLICT, 'User not found!');
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000);
-  const otpExpiresAt = new Date();
-  otpExpiresAt.setMinutes(otpExpiresAt.getMinutes() + 5);
-  const otpExpiresAtString = otpExpiresAt.toISOString();
-
-  await prisma.user.update({
-    where: { email: payload.email },
-    data: {
-      otp: otp,
-      otpExpiry: otpExpiresAtString,
-    },
-  });
   if (!userData.email) {
     throw new AppError(httpStatus.CONFLICT, 'Email not set for this user');
   }
 
+  // ✅ Generate OTP + JWT token
+  const otpToken = generateOtpToken(userData.email);
+
+  // ✅ Send email
   await emailSender(
-    'Verify Your Email',
+    'Reset Your Password',
     userData.email,
-
     `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-    <table width="100%" style="border-collapse: collapse;">
-    <tr>
-      <td style="background-color: #E98F5A; padding: 20px; text-align: center; color: #000000; border-radius: 10px 10px 0 0;">
-        <h2 style="margin: 0; font-size: 24px;">Reset password OTP</h2>
-      </td>
-    </tr>
-    <tr>
-
-      <td style="padding: 20px;">
-        <p style="font-size: 16px; margin: 0;">Hello <strong>${
-          userData.fullName
-        }</strong>,</p>
-        <p style="font-size: 16px;">Please verify your email.</p>
-        <div style="text-align: center; margin: 20px 0;">
-          <p style="font-size: 18px;" >Verify email using this OTP: <span style="font-weight:bold"> ${otp} </span><br/> This OTP will be Expired in 5 minutes,</p>
-        </div>
-        <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email. No further action is needed.</p>
-        <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
-      </td>
-    </tr>
-    <tr>
-      <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-        <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Team. All rights reserved.</p>
-      </td>
-    </tr>
-    </table>
-  </div>
-
-      `,
+      <table width="100%" style="border-collapse: collapse;">
+        <tr>
+          <td style="background-color: #46BEF2; padding: 20px; text-align: center; color: #fff; border-radius: 10px 10px 0 0;">
+            <h2 style="margin: 0; font-size: 24px;">Reset Password OTP</h2>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 20px;">
+            <p style="font-size: 16px; margin: 0;">Hello <strong>${userData.fullName}</strong>,</p>
+            <p style="font-size: 16px;">Please verify your email to reset your password.</p>
+            <div style="text-align: center; margin: 20px 0;">
+              <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otpToken.otp}</span><br/>This OTP will expire in 5 minutes.</p>
+            </div>
+            <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email. No further action is needed.</p>
+            <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
+            <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Time Team. All rights reserved.</p>
+          </td>
+        </tr>
+      </table>
+    </div>`,
   );
 
-  return { message: 'OTP sent via your email successfully' };
+  // ✅ Return token to frontend for later verification
+  return {
+    message: 'OTP sent via your email successfully',
+    otpToken, // frontend must send this back with OTP for verification
+  };
 };
 
 //resend otp
-const resendOtpIntoDB = async (payload: any) => {
+const resendOtpIntoDB = async (payload: { email: string }) => {
   const userData = await prisma.user.findUnique({
     where: { email: payload.email },
   });
@@ -367,61 +327,54 @@ const resendOtpIntoDB = async (payload: any) => {
   if (!userData) {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
   }
-  const otp = Math.floor(100000 + Math.random() * 900000);
-  const otpExpiresAt = new Date();
-  otpExpiresAt.setMinutes(otpExpiresAt.getMinutes() + 5);
-  const otpExpiresAtString = otpExpiresAt.toISOString();
 
-  await prisma.user.update({
-    where: { email: payload.email },
-    data: {
-      otp: otp,
-      otpExpiry: otpExpiresAtString,
-    },
-  });
   if (!userData.email) {
     throw new AppError(httpStatus.CONFLICT, 'Email not set for this user');
   }
 
+  // ✅ Generate OTP + JWT token
+  const otpToken = generateOtpToken(userData.email);
+
+  // ✅ Send email
   await emailSender(
-    'Verify Your Email',
+    'Reset Password OTP',
     userData.email,
-
     `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #000000; border-radius: 10px;">
-    <table width="100%" style="border-collapse: collapse;">
-    <tr>
-      <td style="background-color: #E98F5A; padding: 20px; text-align: center; color: #f5f5f5; border-radius: 10px 10px 0 0;">
-        <h2 style="margin: 0; font-size: 24px;">Reset Password OTP</h2>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding: 20px;">
-        <p style="font-size: 16px; margin: 0;">Hello <strong>${
-          userData.fullName
-        }</strong>,</p>
-        <p style="font-size: 16px;">Please verify your email.</p>
-        <div style="text-align: center; margin: 20px 0;">
-          <p style="font-size: 18px;" >Verify email using this OTP: <span style="font-weight:bold"> ${otp} </span><br/> This OTP will be Expired in 5 minutes,</p>
-        </div>
-        <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email. No further action is needed.</p>
-        <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
-      </td>
-    </tr>
-    <tr>
-      <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-        <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Time Team. All rights reserved.</p>
-      </td>
-    </tr>
-    </table>
-  </div>
-
-      `,
+      <table width="100%" style="border-collapse: collapse;">
+        <tr>
+          <td style="background-color: #46BEF2; padding: 20px; text-align: center; color: #fff; border-radius: 10px 10px 0 0;">
+            <h2 style="margin: 0; font-size: 24px;">Reset Password OTP</h2>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 20px;">
+            <p style="font-size: 16px; margin: 0;">Hello <strong>${userData.fullName}</strong>,</p>
+            <p style="font-size: 16px;">Please verify your email to reset your password.</p>
+            <div style="text-align: center; margin: 20px 0;">
+              <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otpToken.otp}</span><br/>This OTP will expire in 5 minutes.</p>
+            </div>
+            <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email. No further action is needed.</p>
+            <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
+            <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Time Team. All rights reserved.</p>
+          </td>
+        </tr>
+      </table>
+    </div>`,
   );
 
-  return { message: 'OTP sent via your email successfully' };
+  // ✅ Return token to frontend for verification
+  return {
+    message: 'OTP sent via your email successfully',
+    otpToken,
+  };
 };
+
 // verify otp
-const verifyOtpInDB = async (bodyData: {
+const verifyOtpInDB1 = async (bodyData: {
   email: string;
   password: string;
   otp: number;
@@ -456,8 +409,6 @@ const verifyOtpInDB = async (bodyData: {
   // If user is not active, determine what else to update
   if (userData.status !== UserStatus.ACTIVE) {
     // updateData.status = UserStatus.ACTIVE;
-
-  
   }
 
   await prisma.user.update({
@@ -485,53 +436,88 @@ const verifyOtpInDB = async (bodyData: {
   return { message: 'OTP verified successfully!' };
 };
 
-// verify otp
-const verifyOtpForgotPasswordInDB = async (bodyData: {
+const verifyOtpInDB = async (bodyData: {
   email: string;
-  password: string;
   otp: number;
+  otpToken: string; // <-- token from frontend
 }) => {
   const userData = await prisma.user.findUnique({
     where: { email: bodyData.email },
   });
 
   if (!userData) {
-    throw new AppError(httpStatus.CONFLICT, 'User not found!');
-  }
-  const currentTime = new Date(Date.now());
-
-  if (userData?.otp !== bodyData.otp) {
-    throw new AppError(httpStatus.CONFLICT, 'Your OTP is incorrect!');
-  } else if (!userData.otpExpiry || userData.otpExpiry <= currentTime) {
-    throw new AppError(
-      httpStatus.CONFLICT,
-      'Your OTP is expired, please send new otp',
-    );
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
   }
 
-  if (userData.status !== UserStatus.ACTIVE) {
-    await prisma.user.update({
-      where: { email: bodyData.email },
-      data: {
-        otp: null,
-        otpExpiry: null,
-        status: UserStatus.ACTIVE,
+  // ✅ use JWT util to validate OTP
+  const isValid = verifyOtp(bodyData.email, bodyData.otp, bodyData.otpToken);
+  if (!isValid) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Invalid or expired OTP!');
+  }
+
+  // Activate user
+  const updatedUser = await prisma.user.update({
+    where: { email: bodyData.email },
+    data: {
+      status: UserStatus.ACTIVE,
+      isVerified: true,
+    },
+  });
+
+  // Ensure Stripe customer
+  if (!updatedUser.stripeCustomerId) {
+    const customer = await stripe.customers.create({
+      name: userData.fullName,
+      email: userData.email,
+      address: {
+        city: userData.address ?? 'City',
+        country: 'PL', // Poland for your project
+      },
+      metadata: {
+        userId: userData.id,
+        role: userData.role,
       },
     });
-  } else {
+
     await prisma.user.update({
-      where: { email: bodyData.email },
-      data: {
-        otp: null,
-        otpExpiry: null,
-      },
+      where: { id: userData.id },
+      data: { stripeCustomerId: customer.id },
     });
   }
 
   return { message: 'OTP verified successfully!' };
 };
 
+// verify otp
+const verifyOtpForgotPasswordInDB = async (payload: {
+  email: string;
+  otp: number;
+  otpToken: string;
+}) => {
+  const userData = await prisma.user.findUnique({
+    where: { email: payload.email },
+  });
 
+  if (!userData) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
+  }
+
+  // ✅ Verify OTP using JWT token
+  const isValid = verifyOtp(payload.email, payload.otp, payload.otpToken);
+  if (!isValid) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Invalid or expired OTP!');
+  }
+
+  // ✅ Clear any existing OTP flags if needed (optional)
+  if (userData.status !== UserStatus.ACTIVE) {
+    await prisma.user.update({
+      where: { email: payload.email },
+      data: { status: UserStatus.ACTIVE },
+    });
+  }
+
+  return { message: 'OTP verified successfully!' };
+};
 
 // Define a type for the payload to improve type safety
 interface SocialLoginPayload {
@@ -546,7 +532,10 @@ interface SocialLoginPayload {
 
 const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
   // Prevent creating an ADMIN via social sign-up
-  if (payload.role === UserRoleEnum.ADMIN || payload.role === UserRoleEnum.SUPER_ADMIN) {
+  if (
+    payload.role === UserRoleEnum.ADMIN ||
+    payload.role === UserRoleEnum.SUPER_ADMIN
+  ) {
     throw new AppError(
       httpStatus.FORBIDDEN,
       'Admin accounts cannot be created via social sign-up.',
@@ -555,17 +544,13 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
 
   // Find existing user by email
   let userRecord = await prisma.user.findUnique({
-    where: { email: payload.email, role: payload.role},
+    where: { email: payload.email, role: payload.role },
     select: {
       id: true,
       fullName: true,
       email: true,
       role: true,
       image: true,
-      onBoarding: true,
-      isSubscribed: true,
-      subscriptionEnd: true,
-      subscriptionPlan: true,
       isProfileComplete: true,
       status: true,
     },
@@ -575,12 +560,12 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
 
   if (userRecord) {
     // Check profile completion
-    if (userRecord.isProfileComplete === false) {
-      throw new AppError(
-        httpStatus.BAD_REQUEST,
-        'Please complete your profile before logging in',
-      );
-    }
+    // if (userRecord.isProfileComplete === false) {
+    //   throw new AppError(
+    //     httpStatus.BAD_REQUEST,
+    //     'Please complete your profile before logging in',
+    //   );
+    // }
 
     // Check if account is blocked
     if (userRecord.status === UserStatus.BLOCKED) {
@@ -591,19 +576,6 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
     }
 
 
-    // For BARBER, add similar verification check (assuming a barber model exists)
-    // if (userRecord.role === UserRoleEnum.BARBER) {
-    //   const barber = await prisma.barber.findFirst({
-    //     where: { userId: userRecord.id },
-    //   });
-      
-    //   if (barber?.isVerified === false) {
-    //     throw new AppError(
-    //       httpStatus.BAD_REQUEST,
-    //       'Your barber profile is not verified yet. Please wait for verification.',
-    //     );
-    //   }
-    // }
   } else {
     // Validate and sanitize role for new users (default to CUSTOMER if invalid/missing)
     let userRole: UserRoleEnum = UserRoleEnum.CUSTOMER;
@@ -617,12 +589,12 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
         fullName: payload.fullName,
         email: payload.email,
         image: payload.image ?? null,
-        role: userRole,
+        role: UserRoleEnum.CUSTOMER, // Default role for social sign-ups
         status: UserStatus.ACTIVE,
         fcmToken: payload.fcmToken ?? null,
         phoneNumber: payload.phoneNumber ?? null,
         address: payload.address ?? null,
-        isProfileComplete: payload.role === UserRoleEnum.CUSTOMER ? true : false, // Auto-complete profile for CUSTOMER
+        isProfileComplete: true, // Assume social login users have complete profiles
       },
       select: {
         id: true,
@@ -630,30 +602,22 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
         email: true,
         role: true,
         image: true,
-        onBoarding: true,
-        isSubscribed: true,
-        subscriptionEnd: true,
-        subscriptionPlan: true,
       },
     });
-    
 
     // Use created data with defaults (avoid re-fetch)
     userRecord = {
       ...created,
       status: UserStatus.ACTIVE,
       isProfileComplete: true,
-      onBoarding: created.onBoarding ?? false,
-      isSubscribed: created.isSubscribed ?? false,
-      subscriptionEnd: created.subscriptionEnd ?? null,
-      subscriptionPlan: created.subscriptionPlan ?? null,
     };
 
     isNewUser = true;
   }
 
   // Update FCM token if provided (for both new and existing users)
-  if (payload.fcmToken && !isNewUser) { // Skip for new users if already set during create
+  if (payload.fcmToken && !isNewUser) {
+    // Skip for new users if already set during create
     await prisma.user.update({
       where: { id: userRecord.id },
       data: { fcmToken: payload.fcmToken },
@@ -662,7 +626,7 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
 
   // Helper to build tokens
   const buildTokensForUser = async (
-    user: typeof userRecord
+    user: typeof userRecord,
   ): Promise<{ accessToken: string; refreshToken: string }> => {
     const accessToken = await generateToken(
       {
@@ -684,7 +648,8 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
     return { accessToken, refreshToken: refreshTokenValue };
   };
 
-  const { accessToken, refreshToken: refreshTokenValue } = await buildTokensForUser(userRecord);
+  const { accessToken, refreshToken: refreshTokenValue } =
+    await buildTokensForUser(userRecord);
 
   // Prepare response based on role
   const response: any = {
@@ -696,16 +661,6 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
     accessToken,
     refreshToken: refreshTokenValue,
   };
-
-  // Add role-specific fields
-  if (userRecord.role === UserRoleEnum.SALOON_OWNER) {
-    response.isSubscribed = userRecord.isSubscribed;
-    response.subscriptionEnd = userRecord.subscriptionEnd;
-    response.subscriptionPlan = userRecord.subscriptionPlan;
-    response.onBoarding = userRecord.onBoarding;
-  } else if (userRecord.role === UserRoleEnum.BARBER) {
-    response.onBoarding = userRecord.onBoarding;
-  }
 
   return response;
 };
