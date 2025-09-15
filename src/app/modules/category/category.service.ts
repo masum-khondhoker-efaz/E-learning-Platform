@@ -5,6 +5,15 @@ import httpStatus from 'http-status';
 
 
 const createCategoryIntoDb = async (userId: string, data: any) => {
+
+  const existingCategory = await prisma.category.findFirst({
+    where: {
+      name: data.name,
+    },
+  });
+  if (existingCategory) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Category with this name already exists');
+  }
   
     const result = await prisma.category.create({ 
     data: {
@@ -43,6 +52,16 @@ const getCategoryByIdFromDb = async (userId: string, categoryId: string) => {
 
 
 const updateCategoryIntoDb = async (userId: string, categoryId: string, data: any) => {
+
+  const existingCategory = await prisma.category.findFirst({
+    where: {
+      id: { not: categoryId },
+      name: data.name,
+    },
+  });
+  if (existingCategory) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Category with this name already exists');
+  }
   
     const result = await prisma.category.update({
       where:  {
@@ -60,6 +79,26 @@ const updateCategoryIntoDb = async (userId: string, categoryId: string, data: an
   };
 
 const deleteCategoryItemFromDb = async (userId: string, categoryId: string) => {
+
+
+  const existingCategory = await prisma.category.findUnique({
+    where: {
+      id: categoryId,
+    },
+  });
+  if (!existingCategory) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Category not found');
+  }
+
+  const findCoursesWithCategory = await prisma.course.findFirst({
+    where: {
+      categoryId: categoryId,
+    },
+  });
+  if (findCoursesWithCategory) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Cannot delete category with associated courses');
+  }
+
     const deletedItem = await prisma.category.delete({
       where: {
       id: categoryId,

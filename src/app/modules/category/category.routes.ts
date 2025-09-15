@@ -18,7 +18,7 @@ router.get('/', auth(), categoryController.getCategoryList);
 
 router.get('/:id', auth(), categoryController.getCategoryById);
 
-router.put(
+router.patch(
   '/:id',
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   validateRequest(categoryValidation.updateSchema),

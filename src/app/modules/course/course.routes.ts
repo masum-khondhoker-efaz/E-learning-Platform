@@ -5,12 +5,14 @@ import validateRequest from '../../middlewares/validateRequest';
 import { courseController } from './course.controller';
 import { courseValidation } from './course.validation';
 import { multerUploadMultiple } from '../../utils/multipleFile';
+import { parseBody } from '../../middlewares/parseBody';
 
 const router = express.Router();
 
 router.post(
   '/',
   multerUploadMultiple.any(),
+  parseBody,
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   courseController.createCourse,
 );

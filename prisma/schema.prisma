@@ -49,6 +49,7 @@ model User {
   Payment          Payment[]
   Company          Company[]
   Category         Category[]
+  Course           Course[]
 
   @@map("users")
 }
@@ -98,6 +99,7 @@ model Category {
 
 model Course {
   id                     String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId                 String   @db.ObjectId
   courseTitle            String
   courseShortDescription String
   courseDescription      String
@@ -116,6 +118,7 @@ model Course {
   updatedAt              DateTime @updatedAt
 
   // Relationships
+  user     User      @relation(fields: [userId], references: [id])
   category Category  @relation(fields: [categoryId], references: [id])
   Section  Section[]
 

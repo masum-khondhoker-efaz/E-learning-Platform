@@ -5,6 +5,8 @@ import { termAndConditionRoutes } from '../modules/termAndCondition/termAndCondi
 import { privacyPolicyRoutes } from '../modules/privacyPolicy/privacyPolicy.routes';
 import { supportRepliesRoutes } from '../modules/supportReplies/supportReplies.routes';
 import { reviewRoutes } from '../modules/review/review.routes';
+import { categoryRoutes } from '../modules/category/category.routes';
+import { courseRoutes } from '../modules/course/course.routes';
 
 const router = express.Router();
 
@@ -36,6 +38,14 @@ const moduleRoutes = [
   {
     path: '/reviews',
     route: reviewRoutes,
+  },
+  {
+    path: '/categories',
+    route: categoryRoutes,
+  },
+  {
+    path: '/courses',
+    route: courseRoutes,
   },
 ];
 
