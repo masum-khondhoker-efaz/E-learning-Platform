@@ -21,8 +21,10 @@ router.get('/', auth(), courseController.getCourseList);
 
 router.get('/:id', auth(), courseController.getCourseById);
 
-router.put(
+router.patch(
   '/:id',
+  multerUploadMultiple.any(),
+  parseBody,
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   validateRequest(courseValidation.updateCourseSchema),
   courseController.updateCourse,

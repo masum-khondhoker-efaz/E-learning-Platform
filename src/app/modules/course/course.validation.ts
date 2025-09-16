@@ -12,6 +12,21 @@ const sectionSchema = z.object({
   lessons: z.array(lessonSchema).min(1, 'At least one lesson is required'),
 });
 
+const lessonUpdateSchema = z.object({
+  title: z.string().min(1, 'Lesson title is required').optional(),
+  content: z.string().min(1, 'Lesson content is required').optional(),
+  order: z.number().int().min(1, 'Lesson order must be at least 1').optional(),
+});
+
+const sectionUpdateSchema = z.object({
+  title: z.string().min(1, 'Section title is required').optional(),
+  order: z.number().int().min(1, 'Section order must be at least 1').optional(),
+  lessons: z
+    .array(lessonUpdateSchema)
+    .min(1, 'At least one lesson is required')
+    .optional(),
+});
+
 const createCourseSchema = z.object({
   body: z.object({
     courseTitle: z.string().min(1, 'Course title is required'),
@@ -56,7 +71,7 @@ const updateCourseSchema = z.object({
     instructorDescription: z.string().optional(),
     courseThumbnail: z.string().url('Must be a valid URL').optional(),
     sections: z
-      .array(sectionSchema)
+      .array(sectionUpdateSchema)
       .min(1, 'At least one section is required')
       .optional(),
   }),

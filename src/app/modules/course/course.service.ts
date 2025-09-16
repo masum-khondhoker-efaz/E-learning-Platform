@@ -2,12 +2,22 @@ import prisma from '../../utils/prisma';
 import { UserRoleEnum, UserStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
-
+import { deleteFileFromSpace } from '../../utils/deleteImage';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+import {
+  calculatePagination,
+  formatPaginationResponse,
+  getPaginationQuery,
+} from '../../utils/pagination';
+import {
+  buildFilterQuery,
+  buildNumericRangeQuery,
+  buildSearchQuery,
+  combineQueries,
+} from '../../utils/searchFilter';
 
 const createCourseIntoDb = async (userId: string, data: any) => {
-  return await prisma.$transaction(async (tx) => {
-
-
+  return await prisma.$transaction(async tx => {
     const existingCourse = await prisma.course.findMany({
       where: {
         OR: [
@@ -15,12 +25,14 @@ const createCourseIntoDb = async (userId: string, data: any) => {
           { courseShortDescription: data.courseShortDescription },
           { courseDescription: data.courseDescription },
         ],
-      }
-    })
+      },
+    });
     if (existingCourse.length > 0) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'Course with similar title or description already exists');
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Course with similar title or description already exists',
+      );
     }
-
 
     // Step 1: Create course
     const course = await tx.course.create({
@@ -41,7 +53,7 @@ const createCourseIntoDb = async (userId: string, data: any) => {
         instructorDescription: data.instructorDescription,
         courseThumbnail: data.courseThumbnail,
         // userId (if your schema actually has this field, since Course currently does not)
-        // userId: userId, 
+        // userId: userId,
       },
     });
 
@@ -90,50 +102,369 @@ const createCourseIntoDb = async (userId: string, data: any) => {
   });
 };
 
+const getCourseListFromDb = async (
+  userId: string,
+  options: ISearchAndFilterOptions,
+) => {
+  // Ensure numeric values for price/rating filters
+  if (options.priceMin !== undefined) options.priceMin = Number(options.priceMin);
+  if (options.priceMax !== undefined) options.priceMax = Number(options.priceMax);
+  if (options.discountPriceMin !== undefined) options.discountPriceMin = Number(options.discountPriceMin);
+  if (options.discountPriceMax !== undefined) options.discountPriceMax = Number(options.discountPriceMax);
+  if (options.rating !== undefined) options.rating = Number(options.rating);
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
-const getCourseListFromDb = async (userId: string) => {
-  
-    const result = await prisma.course.findMany();
-    if (result.length === 0) {
-    return { message: 'No course found' };
-  }
-    return result;
+  // Build search query
+  const searchFields = [
+    'courseTitle',
+    'courseShortDescription',
+    'courseDescription',
+    'instructorName',
+    'instructorDesignation',
+  ];
+  const searchQuery = buildSearchQuery({
+    searchTerm: options.searchTerm,
+    searchFields,
+  });
+
+  // Build filter query
+  const filterFields: Record<string, any> = {
+  ...(options.courseLevel && { courseLevel: options.courseLevel }),
+  ...(options.categoryName && { category: { name: options.categoryName } }),
+  ...(options.certificate !== undefined && { certificate: options.certificate }),
+  ...(options.lifetimeAccess !== undefined && { lifetimeAccess: options.lifetimeAccess }),
+  ...(options.instructorName && { instructorName: options.instructorName }),
+  ...(options.instructorDesignation && { instructorDesignation: options.instructorDesignation }),
+  ...(options.rating !== undefined && { rating: Number(options.rating) }),
+  ...(options.priceMin !== undefined && { price: { gte: Number(options.priceMin) } }),
+  ...(options.priceMax !== undefined && { price: { lte: Number(options.priceMax) } }),
+  ...(options.discountPriceMin !== undefined && { discountPrice: { gte: Number(options.discountPriceMin) } }),
+  ...(options.discountPriceMax !== undefined && { discountPrice: { lte: Number(options.discountPriceMax) } }),
+};
+  const filterQuery = buildFilterQuery(filterFields);
+
+  // Numeric range filters
+  const priceQuery = buildNumericRangeQuery(
+    'price',
+    options.priceMin,
+    options.priceMax,
+  );
+  const discountPriceQuery = buildNumericRangeQuery(
+    'discountPrice',
+    options.discountPriceMin,
+    options.discountPriceMax,
+  );
+
+  // Combine all queries
+  const whereQuery = combineQueries(
+    { userId }, // filter by userId if needed
+    searchQuery,
+    filterQuery,
+    priceQuery,
+    discountPriceQuery,
+  );
+
+  // Sorting
+  const orderBy = getPaginationQuery(sortBy, sortOrder).orderBy;
+
+  // Fetch total count for pagination
+  const total = await prisma.course.count({ where: whereQuery });
+
+  // Fetch paginated data
+  const courses = await prisma.course.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      category: {
+        select: {
+          name: true,
+        },
+      },
+      Section: {
+        include: {
+          Lesson: true,
+        },
+      },
+    },
+  });
+
+  // Flatten category.name into the course object
+  const result = courses.map(course => {
+    const { category, ...rest } = course;
+    return {
+      categoryName: category?.name ?? null,
+      ...rest,
+    };
+  });
+
+  return formatPaginationResponse(result, total, page, limit);
 };
 
 const getCourseByIdFromDb = async (userId: string, courseId: string) => {
-  
-    const result = await prisma.course.findUnique({ 
+  const result = await prisma.course.findUnique({
     where: {
       id: courseId,
-    }
-   });
-    if (!result) {
-    throw new AppError(httpStatus.NOT_FOUND,'course not found');
-  }
-    return result;
-  };
-
-
-
-const updateCourseIntoDb = async (userId: string, courseId: string, data: any) => {
-  
-    const result = await prisma.course.update({
-      where:  {
-        id: courseId,
     },
-    data: {
-      ...data,
+    include: {
+      category: {
+        select: {
+          name: true,
+        },
+      },
+      Section: {
+        include: {
+          Lesson: true,
+        },
+      },
     },
   });
   if (!result) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'courseId, not updated');
+    throw new AppError(httpStatus.NOT_FOUND, 'course not found');
   }
-    return result;
+
+  // Flatten category.name into the course object
+  const { category, ...rest } = result;
+  const formattedResult = {
+    categoryName: category?.name ?? null,
+    ...rest,
   };
+  return formattedResult;
+};
+
+const updateCourseIntoDb = async (courseId: string, userId: string, data: any) => {
+  return await prisma.$transaction(async tx => {
+    // Check if course exists and belongs to user
+    const existingCourse = await tx.course.findFirst({
+      where: {
+        id: courseId,
+        userId: userId,
+      },
+      include: {
+        Section: {
+          include: {
+            Lesson: true,
+          },
+        },
+      },
+    });
+
+    if (!existingCourse) {
+      throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+    }
+
+    // Check for duplicate course title/description (excluding current course)
+    const duplicateCourse = await tx.course.findFirst({
+      where: {
+        id: { not: courseId },
+        OR: [
+          { courseTitle: data.courseTitle },
+          { courseShortDescription: data.courseShortDescription },
+          { courseDescription: data.courseDescription },
+        ],
+      },
+    });
+
+    if (duplicateCourse) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Course with similar title or description already exists',
+      );
+    }
+
+    // Step 1: Update course basic info
+    const updatedCourse = await tx.course.update({
+      where: { id: courseId },
+      data: {
+        courseTitle: data.courseTitle,
+        courseShortDescription: data.courseShortDescription,
+        courseDescription: data.courseDescription,
+        courseLevel: data.courseLevel,
+        categoryId: data.categoryId,
+        certificate: data.certificate ?? false,
+        lifetimeAccess: data.lifetimeAccess ?? false,
+        price: data.price,
+        discountPrice: data.discountPrice ?? 0,
+        instructorName: data.instructorName,
+        instructorImage: data.instructorImage,
+        instructorDesignation: data.instructorDesignation,
+        instructorDescription: data.instructorDescription,
+        courseThumbnail: data.courseThumbnail,
+      },
+    });
+
+    // Step 2: Handle sections and lessons
+    if (data.sections && Array.isArray(data.sections)) {
+      // Get existing sections and lessons for comparison
+      const existingSections = existingCourse.Section;
+      const existingLessons = existingSections.flatMap(section => section.Lesson);
+
+      // Arrays to track what to keep and delete
+      const sectionsToKeep: string[] = [];
+      const lessonsToKeep: string[] = [];
+      const lessonsToDelete: any[] = [];
+
+      // Process each section from the update data
+      for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
+        const sectionData = data.sections[sIndex];
+        let sectionId = sectionData.id;
+
+        // Update existing section or create new one
+        if (sectionId) {
+          // Update existing section
+          await tx.section.update({
+            where: { id: sectionId },
+            data: {
+              title: sectionData.title,
+              order: sectionData.order ?? sIndex + 1,
+            },
+          });
+          sectionsToKeep.push(sectionId);
+        } else {
+          // Create new section
+          const newSection = await tx.section.create({
+            data: {
+              courseId: courseId,
+              title: sectionData.title,
+              order: sectionData.order ?? sIndex + 1,
+            },
+          });
+          sectionId = newSection.id;
+          sectionsToKeep.push(sectionId);
+        }
+
+        // Process lessons for this section
+        if (sectionData.lessons && Array.isArray(sectionData.lessons)) {
+          for (let lIndex = 0; lIndex < sectionData.lessons.length; lIndex++) {
+            const lessonData = sectionData.lessons[lIndex];
+            let lessonId = lessonData.id;
+
+            if (lessonId) {
+              // Update existing lesson - check if content changed and delete old file
+              const existingLesson = existingLessons.find(l => l.id === lessonId);
+              if (existingLesson && lessonData.content !== existingLesson.content) {
+                // Content changed, delete old file
+                await deleteFileFromSpace(existingLesson.content);
+              }
+
+              await tx.lesson.update({
+                where: { id: lessonId },
+                data: {
+                  title: lessonData.title,
+                  content: lessonData.content,
+                  order: lessonData.order ?? lIndex + 1,
+                },
+              });
+              lessonsToKeep.push(lessonId);
+            } else {
+              // Create new lesson
+              await tx.lesson.create({
+                data: {
+                  sectionId: sectionId,
+                  title: lessonData.title,
+                  content: lessonData.content,
+                  order: lessonData.order ?? lIndex + 1,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      // Delete sections that are no longer present
+      const sectionsToDelete = existingSections
+        .filter(section => !sectionsToKeep.includes(section.id))
+        .flatMap(section => section.Lesson);
+
+      // Delete lessons from deleted sections and collect their content URLs
+      const lessonsContentToDelete = sectionsToDelete.map(lesson => lesson.content);
+      
+      // Also find lessons that were removed from existing sections
+      const removedLessons = existingLessons.filter(lesson => 
+        !lessonsToKeep.includes(lesson.id) && 
+        sectionsToKeep.includes(lesson.sectionId)
+      );
+      
+      const removedLessonsContent = removedLessons.map(lesson => lesson.content);
+
+      // Combine all content URLs to delete
+      const allContentToDelete = [...lessonsContentToDelete, ...removedLessonsContent];
+
+      // Delete the files from cloud storage
+      for (const contentUrl of allContentToDelete) {
+        if (contentUrl) {
+          await deleteFileFromSpace(contentUrl);
+        }
+      }
+
+      // Delete the database records
+      if (sectionsToDelete.length > 0) {
+        await tx.lesson.deleteMany({
+          where: {
+            id: { in: sectionsToDelete.map(lesson => lesson.id) }
+          }
+        });
+      }
+
+      if (removedLessons.length > 0) {
+        await tx.lesson.deleteMany({
+          where: {
+            id: { in: removedLessons.map(lesson => lesson.id) }
+          }
+        });
+      }
+
+      // Delete sections that are no longer present
+      const sectionsToDeleteIds = existingSections
+        .filter(section => !sectionsToKeep.includes(section.id))
+        .map(section => section.id);
+
+      if (sectionsToDeleteIds.length > 0) {
+        await tx.section.deleteMany({
+          where: {
+            id: { in: sectionsToDeleteIds }
+          }
+        });
+      }
+    }
+
+    // Return the updated course with all relations
+    return await tx.course.findUnique({
+      where: { id: courseId },
+      include: {
+        Section: {
+          include: {
+            Lesson: true,
+          },
+          orderBy: {
+            order: 'asc',
+          },
+        },
+      },
+    });
+  });
+};
+
+// Helper function to get course by ID
+const getCourseById = async (courseId: string) => {
+  return await prisma.course.findUnique({
+    where: { id: courseId },
+    include: {
+      Section: {
+        include: {
+          Lesson: true,
+        },
+      },
+    },
+  });
+};
+
+
 
 const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
-    const deletedItem = await prisma.course.delete({
-      where: {
+  const deletedItem = await prisma.course.delete({
+    where: {
       id: courseId,
     },
   });
@@ -141,13 +472,14 @@ const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'courseId, not deleted');
   }
 
-    return deletedItem;
-  };
+  return deletedItem;
+};
 
 export const courseService = {
-createCourseIntoDb,
-getCourseListFromDb,
-getCourseByIdFromDb,
-updateCourseIntoDb,
-deleteCourseItemFromDb,
+  createCourseIntoDb,
+  getCourseListFromDb,
+  getCourseByIdFromDb,
+  updateCourseIntoDb,
+  getCourseById,
+  deleteCourseItemFromDb,
 };
