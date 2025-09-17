@@ -12,7 +12,7 @@ model User {
   fullName          String
   email             String        @unique
   password          String?
-  role              UserRoleEnum  @default(CUSTOMER)
+  role              UserRoleEnum  @default(STUDENT)
   status            UserStatus    @default(PENDING)
   isVerified        Boolean       @default(false)
   isProfileComplete Boolean       @default(false)
@@ -50,6 +50,8 @@ model User {
   Company          Company[]
   Category         Category[]
   Course           Course[]
+  Test             Test[]
+  TestAttempt      TestAttempt[]
 
   @@map("users")
 }
@@ -121,6 +123,7 @@ model Course {
   user     User      @relation(fields: [userId], references: [id])
   category Category  @relation(fields: [categoryId], references: [id])
   Section  Section[]
+  Test     Test[]
 
   @@map("courses")
 }
@@ -346,33 +349,151 @@ model TermAndCondition {
   @@map("terms_and_conditions")
 }
 
-enum AvailableTO {
-  EVERYONE
-  MALE
-  FEMALE
+model Test {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String     @db.ObjectId
+  courseId     String     @db.ObjectId
+  title        String
+  description  String?
+  passingScore Int        @default(60) // Percentage or absolute score
+  totalMarks   Int?       @default(100)
+  timeLimit    Int? // Time limit in minutes
+  isActive     Boolean    @default(true)
+  isPublished  Boolean    @default(false)
+  questions    Question[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  course      Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  TestAttempt TestAttempt[]
+
+  @@index([courseId])
+  @@index([isActive])
+  @@index([isPublished])
 }
 
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-  RESCHEDULED
-  NO_SHOW
-  REFUNDED
+model Question {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  testId      String       @db.ObjectId
+  title       String
+  description String?
+  type        QuestionType
+  marks       Int          @default(1)
+  explanation String? // Explanation for the answer
+  order       Int? // Order within the test
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  test         Test           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  options      Option[] // For MCQ, True/False
+  answers      Answer[] // For short answers
+  UserResponse UserResponse[]
+
+  @@index([testId])
+  @@index([type])
+  @@index([order])
 }
 
-enum JobApplicationStatus {
-  PENDING
-  ONGOING
-  COMPLETED
-  REJECTED
+model Option {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  questionId String   @db.ObjectId
+  text       String
+  isCorrect  Boolean  @default(false)
+  order      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
 }
 
-enum LoyaltySchemeType {
-  VISIT_BASED // Points per visit
-  SPENDING_BASED // Points per $ spent
-  SERVICE_BASED // Points for specific services
+model Answer {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  questionId String   @db.ObjectId
+  text       String // For short answers
+  isCorrect  Boolean  @default(true) // For exact match checking
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+// Track test attempts and results
+model TestAttempt {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String   @db.ObjectId
+  testId       String   @db.ObjectId
+  score        Int      // Auto-calculated score (MCQ + TrueFalse)
+  totalMarks   Int      // Total marks of the test
+  percentage   Float    // Auto-calculated percentage
+  isPassed     Boolean  // Based on auto-graded questions only
+  status       AttemptStatus @default(SUBMITTED) // New field
+  timeSpent    Int      // Time spent in seconds
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test Test @relation(fields: [testId], references: [id], onDelete: Cascade)
+  responses UserResponse[]
+
+  @@index([userId])
+  @@index([testId])
+  @@index([status]) // New index
+  @@index([isPassed])
+  @@index([createdAt])
+}
+
+model UserResponse {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  attemptId       String   @db.ObjectId
+  questionId      String   @db.ObjectId
+  questionType    QuestionType
+  selectedOptions String[] // For MCQ: array of option IDs
+  shortAnswer     String?  // For short answers
+  isCorrect       Boolean? // Null for short answers initially
+  marksObtained   Int?     // Null for short answers initially
+  status          ResponseStatus @default(SUBMITTED) // New field
+  timeSpent       Int?     // Time spent on this question in seconds
+  instructorNotes String?  // For manual grading notes
+
+  attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([status]) // New index
+}
+
+// New Enums
+enum AttemptStatus {
+  SUBMITTED     // Just submitted, auto-grading done
+  UNDER_REVIEW  // Short answers need manual grading
+  GRADED        // Fully graded (auto + manual)
+  PUBLISHED     // Grades released to student
+}
+
+enum ResponseStatus {
+  SUBMITTED    // Response submitted
+  AUTO_GRADED  // MCQ/TrueFalse graded
+  MANUAL_GRADED // Short answer graded by instructor
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  SHORT_ANSWER
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
 }
 
 enum PaymentStatus {
@@ -392,31 +513,6 @@ enum PlatFormType {
   APPLE
 }
 
-enum QRCodeType {
-  SALOON_REGISTRATION // For saloon owner registration
-  BARBER_PROFILE // Links to barber profile
-  SALOON_PROFILE // Links to saloon profile
-  PROMOTION // For special offers
-  PAYMENT // For quick payments
-  CHECK_IN // For customer check-ins
-  LOYALTY // For loyalty programs
-}
-
-enum QueueStatus {
-  WAITING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-  NO_SHOW
-}
-
-enum RedemptionStatus {
-  PENDING
-  APPLIED
-  EXPIRED
-  CANCELLED
-}
-
 enum ReplyStatus {
   PENDING
   IGNORED
@@ -434,20 +530,6 @@ enum RoomType {
   GROUP
 }
 
-enum SubscriptionPlanStatus {
-  FREE
-  BASIC_PREMIUM
-  ADVANCED_PREMIUM
-  PRO_PREMIUM
-}
-
-enum SubscriptionType {
-  WEEKLY
-  MONTHLY
-  YEARLY
-  LIFETIME
-}
-
 enum SupportStatus {
   OPEN
   IN_PROGRESS
@@ -461,11 +543,10 @@ enum SupportType {
 }
 
 enum UserRoleEnum {
-  CUSTOMER
+  STUDENT
   ADMIN
   SUPER_ADMIN
-  BARBER
-  SALOON_OWNER
+  INSTRUCTOR
 }
 
 enum UserStatus {

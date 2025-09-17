@@ -7,6 +7,9 @@ import { supportRepliesRoutes } from '../modules/supportReplies/supportReplies.r
 import { reviewRoutes } from '../modules/review/review.routes';
 import { categoryRoutes } from '../modules/category/category.routes';
 import { courseRoutes } from '../modules/course/course.routes';
+import { testRoutes } from '../modules/test/test.routes';
+import test from 'node:test';
+import { testAttemptRoutes } from '../modules/testAttempt/testAttempt.routes';
 
 const router = express.Router();
 
@@ -46,6 +49,14 @@ const moduleRoutes = [
   {
     path: '/courses',
     route: courseRoutes,
+  },
+  {
+    path: '/tests',
+    route: testRoutes,
+  },
+  {
+    path: '/attempt-test',
+    route: testAttemptRoutes,
   },
 ];
 

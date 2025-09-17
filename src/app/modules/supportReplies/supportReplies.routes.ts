@@ -10,7 +10,7 @@ const router = express.Router();
 
 router.post(
   '/',
-  auth(UserRoleEnum.CUSTOMER),
+  auth(UserRoleEnum.STUDENT),
   validateRequest(supportRepliesValidation.createSchema),
   supportRepliesController.createSupportReplies,
 );

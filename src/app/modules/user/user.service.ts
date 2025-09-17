@@ -577,8 +577,8 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
 
 
   } else {
-    // Validate and sanitize role for new users (default to CUSTOMER if invalid/missing)
-    let userRole: UserRoleEnum = UserRoleEnum.CUSTOMER;
+    // Validate and sanitize role for new users (default to STUDENT if invalid/missing)
+    let userRole: UserRoleEnum = UserRoleEnum.STUDENT;
     if (payload.role && Object.values(UserRoleEnum).includes(payload.role)) {
       userRole = payload.role;
     }
@@ -589,7 +589,7 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
         fullName: payload.fullName,
         email: payload.email,
         image: payload.image ?? null,
-        role: UserRoleEnum.CUSTOMER, // Default role for social sign-ups
+        role: UserRoleEnum.STUDENT, // Default role for social sign-ups
         status: UserStatus.ACTIVE,
         fcmToken: payload.fcmToken ?? null,
         phoneNumber: payload.phoneNumber ?? null,

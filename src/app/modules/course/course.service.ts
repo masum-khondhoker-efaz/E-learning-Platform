@@ -246,6 +246,9 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
           include: {
             Lesson: true,
           },
+          orderBy: {
+            order: 'asc',
+          },
         },
       },
     });
@@ -277,33 +280,38 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
     const updatedCourse = await tx.course.update({
       where: { id: courseId },
       data: {
-        courseTitle: data.courseTitle,
-        courseShortDescription: data.courseShortDescription,
-        courseDescription: data.courseDescription,
-        courseLevel: data.courseLevel,
-        categoryId: data.categoryId,
-        certificate: data.certificate ?? false,
-        lifetimeAccess: data.lifetimeAccess ?? false,
-        price: data.price,
-        discountPrice: data.discountPrice ?? 0,
-        instructorName: data.instructorName,
-        instructorImage: data.instructorImage,
-        instructorDesignation: data.instructorDesignation,
-        instructorDescription: data.instructorDescription,
-        courseThumbnail: data.courseThumbnail,
+        ...(data.courseTitle !== undefined && { courseTitle: data.courseTitle }),
+        ...(data.courseShortDescription !== undefined && { courseShortDescription: data.courseShortDescription }),
+        ...(data.courseDescription !== undefined && { courseDescription: data.courseDescription }),
+        ...(data.courseLevel !== undefined && { courseLevel: data.courseLevel }),
+        ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
+        ...(data.certificate !== undefined && { certificate: data.certificate }),
+        ...(data.lifetimeAccess !== undefined && { lifetimeAccess: data.lifetimeAccess }),
+        ...(data.price !== undefined && { price: data.price }),
+        ...(data.discountPrice !== undefined && { discountPrice: data.discountPrice }),
+        ...(data.instructorName !== undefined && { instructorName: data.instructorName }),
+        ...(data.instructorImage !== undefined && { instructorImage: data.instructorImage }),
+        ...(data.instructorDesignation !== undefined && { instructorDesignation: data.instructorDesignation }),
+        ...(data.instructorDescription !== undefined && { instructorDescription: data.instructorDescription }),
+        ...(data.courseThumbnail !== undefined && { courseThumbnail: data.courseThumbnail }),
       },
     });
 
     // Step 2: Handle sections and lessons
     if (data.sections && Array.isArray(data.sections)) {
-      // Get existing sections and lessons for comparison
       const existingSections = existingCourse.Section;
       const existingLessons = existingSections.flatMap(section => section.Lesson);
 
-      // Arrays to track what to keep and delete
+      // First, update all existing sections to temporary orders to avoid constraint violations
+      await Promise.all(existingSections.map((section, index) =>
+        tx.section.update({
+          where: { id: section.id },
+          data: { order: 10000 + index } // Temporary high order values
+        })
+      ));
+
       const sectionsToKeep: string[] = [];
       const lessonsToKeep: string[] = [];
-      const lessonsToDelete: any[] = [];
 
       // Process each section from the update data
       for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
@@ -317,7 +325,7 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
             where: { id: sectionId },
             data: {
               title: sectionData.title,
-              order: sectionData.order ?? sIndex + 1,
+              order: sIndex + 1,
             },
           });
           sectionsToKeep.push(sectionId);
@@ -327,7 +335,7 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
             data: {
               courseId: courseId,
               title: sectionData.title,
-              order: sectionData.order ?? sIndex + 1,
+              order: sIndex + 1,
             },
           });
           sectionId = newSection.id;
@@ -336,6 +344,15 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
 
         // Process lessons for this section
         if (sectionData.lessons && Array.isArray(sectionData.lessons)) {
+          // First, update all existing lessons in this section to temporary orders
+          const sectionLessons = existingLessons.filter(l => l.sectionId === sectionId);
+          await Promise.all(sectionLessons.map((lesson, index) =>
+            tx.lesson.update({
+              where: { id: lesson.id },
+              data: { order: 10000 + index }
+            })
+          ));
+
           for (let lIndex = 0; lIndex < sectionData.lessons.length; lIndex++) {
             const lessonData = sectionData.lessons[lIndex];
             let lessonId = lessonData.id;
@@ -353,7 +370,7 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
                 data: {
                   title: lessonData.title,
                   content: lessonData.content,
-                  order: lessonData.order ?? lIndex + 1,
+                  order: lIndex + 1,
                 },
               });
               lessonsToKeep.push(lessonId);
@@ -364,67 +381,46 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
                   sectionId: sectionId,
                   title: lessonData.title,
                   content: lessonData.content,
-                  order: lessonData.order ?? lIndex + 1,
+                  order: lIndex + 1,
                 },
               });
             }
           }
+
+          // Delete lessons that were removed from this section
+          const lessonsToDelete = existingLessons.filter(lesson =>
+            lesson.sectionId === sectionId && !lessonsToKeep.includes(lesson.id)
+          );
+
+          for (const lesson of lessonsToDelete) {
+            if (lesson.content) {
+              await deleteFileFromSpace(lesson.content);
+            }
+            await tx.lesson.delete({
+              where: { id: lesson.id }
+            });
+          }
         }
       }
 
       // Delete sections that are no longer present
-      const sectionsToDelete = existingSections
-        .filter(section => !sectionsToKeep.includes(section.id))
-        .flatMap(section => section.Lesson);
+      const sectionsToDelete = existingSections.filter(section => !sectionsToKeep.includes(section.id));
 
-      // Delete lessons from deleted sections and collect their content URLs
-      const lessonsContentToDelete = sectionsToDelete.map(lesson => lesson.content);
-      
-      // Also find lessons that were removed from existing sections
-      const removedLessons = existingLessons.filter(lesson => 
-        !lessonsToKeep.includes(lesson.id) && 
-        sectionsToKeep.includes(lesson.sectionId)
-      );
-      
-      const removedLessonsContent = removedLessons.map(lesson => lesson.content);
-
-      // Combine all content URLs to delete
-      const allContentToDelete = [...lessonsContentToDelete, ...removedLessonsContent];
-
-      // Delete the files from cloud storage
-      for (const contentUrl of allContentToDelete) {
-        if (contentUrl) {
-          await deleteFileFromSpace(contentUrl);
+      for (const section of sectionsToDelete) {
+        // Delete all lessons in the section first
+        const sectionLessons = existingLessons.filter(l => l.sectionId === section.id);
+        for (const lesson of sectionLessons) {
+          if (lesson.content) {
+            await deleteFileFromSpace(lesson.content);
+          }
         }
-      }
-
-      // Delete the database records
-      if (sectionsToDelete.length > 0) {
+        
         await tx.lesson.deleteMany({
-          where: {
-            id: { in: sectionsToDelete.map(lesson => lesson.id) }
-          }
+          where: { sectionId: section.id }
         });
-      }
 
-      if (removedLessons.length > 0) {
-        await tx.lesson.deleteMany({
-          where: {
-            id: { in: removedLessons.map(lesson => lesson.id) }
-          }
-        });
-      }
-
-      // Delete sections that are no longer present
-      const sectionsToDeleteIds = existingSections
-        .filter(section => !sectionsToKeep.includes(section.id))
-        .map(section => section.id);
-
-      if (sectionsToDeleteIds.length > 0) {
-        await tx.section.deleteMany({
-          where: {
-            id: { in: sectionsToDeleteIds }
-          }
+        await tx.section.delete({
+          where: { id: section.id }
         });
       }
     }
@@ -435,7 +431,11 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
       include: {
         Section: {
           include: {
-            Lesson: true,
+            Lesson: {
+              orderBy: {
+                order: 'asc',
+              },
+            },
           },
           orderBy: {
             order: 'asc',
@@ -455,6 +455,9 @@ const getCourseById = async (courseId: string) => {
         include: {
           Lesson: true,
         },
+        orderBy: {
+          order: 'asc',
+        },
       },
     },
   });
@@ -463,9 +466,52 @@ const getCourseById = async (courseId: string) => {
 
 
 const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
+
+  // delete associated files first
+  const course = await prisma.course.findFirst({
+    where: {
+      id: courseId,
+      // userId: userId,
+    },
+    include: {
+      Section: {
+        include: {
+          Lesson: true,
+        },
+      },
+    },
+  });
+
+  if (!course) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+  }
+
+  // Delete lesson content files
+  for (const section of course.Section) {
+    for (const lesson of section.Lesson) {
+      if (lesson.content) {
+        await deleteFileFromSpace(lesson.content);
+      }
+    }
+  }
+
+  // Delete course thumbnail
+  if (course.courseThumbnail) {
+    await deleteFileFromSpace(course.courseThumbnail);
+  }
+
+  // Now delete the course record (this will cascade to sections and lessons if set up in Prisma schema)    
+
   const deletedItem = await prisma.course.delete({
     where: {
       id: courseId,
+    },
+    include: {
+      Section: {
+        include: {
+          Lesson: true,
+        },
+      },
     },
   });
   if (!deletedItem) {

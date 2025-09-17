@@ -4,6 +4,7 @@ const lessonSchema = z.object({
   title: z.string().min(1, 'Lesson title is required'),
   content: z.string().min(1, 'Lesson content is required'),
   order: z.number().int().min(1, 'Lesson order must be at least 1'),
+  tempKey: z.string().optional(),
 });
 
 const sectionSchema = z.object({
@@ -16,6 +17,7 @@ const lessonUpdateSchema = z.object({
   title: z.string().min(1, 'Lesson title is required').optional(),
   content: z.string().min(1, 'Lesson content is required').optional(),
   order: z.number().int().min(1, 'Lesson order must be at least 1').optional(),
+  tempKey: z.string().optional(),
 });
 
 const sectionUpdateSchema = z.object({

@@ -130,68 +130,71 @@ const getCourseById = catchAsync(async (req, res) => {
 const updateCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
   const { id } = req.params;
-  const { files, body } = req;
+  
+  // Get the parsed JSON data from bodyData
+  let bodyData;
+  try {
+    bodyData = req.body.bodyData ? JSON.parse(req.body.bodyData) : req.body;
+  } catch (error) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Invalid JSON format in bodyData');
+  }
+
+  // Get files from req.files (processed by multer)
+  const allFiles = req.files as Express.Multer.File[];
 
   // Container for uploads
   const uploads: {
     thumbnail?: string;
     instructorImage?: string;
-    lessons: Record<string, string>; // tempKey → uploaded URL
+    lessons: Record<string, string>;
   } = { lessons: {} };
 
-  const allFiles = req.files as Express.Multer.File[];
-
-  // Get existing course to check for files to delete
+  // Get existing course
   const existingCourse = await courseService.getCourseById(id);
   if (!existingCourse) {
     throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
   }
 
-  // Handle thumbnail upload/delete
+  // Handle thumbnail
   const thumbnailFile = allFiles.find(f => f.fieldname === 'thumbnail');
   if (thumbnailFile) {
-    // Delete old thumbnail if exists
     if (existingCourse.courseThumbnail) {
       await deleteFileFromSpace(existingCourse.courseThumbnail);
     }
-    const thumbnailUrl = await uploadFileToSpace(
-      thumbnailFile,
-      'courses/thumbnails',
-    );
-    body.courseThumbnail = thumbnailUrl;
+    const thumbnailUrl = await uploadFileToSpace(thumbnailFile, 'courses/thumbnails');
+    bodyData.courseThumbnail = thumbnailUrl;
   }
 
-  // Handle instructor image upload/delete
+  // Handle instructor image
   const instructorFile = allFiles.find(f => f.fieldname === 'instructorImage');
   if (instructorFile) {
-    // Delete old instructor image if exists
     if (existingCourse.instructorImage) {
       await deleteFileFromSpace(existingCourse.instructorImage);
     }
-    const instructorImageUrl = await uploadFileToSpace(
-      instructorFile,
-      'courses/instructors',
-    );
-    body.instructorImage = instructorImageUrl;
+    const instructorImageUrl = await uploadFileToSpace(instructorFile, 'courses/instructors');
+    bodyData.instructorImage = instructorImageUrl;
   }
 
   // Handle lesson files
   const lessonFiles = allFiles.filter(f => f.fieldname.startsWith('lesson'));
+  console.log('Lesson files found:', lessonFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname })));
+
   for (const file of lessonFiles) {
     const uploadedUrl = await uploadFileToSpace(file, 'courses/lessons');
+    console.log(`Uploaded ${file.fieldname} to: ${uploadedUrl}`);
     uploads.lessons[file.fieldname] = uploadedUrl;
   }
 
+  console.log('Uploads mapping:', uploads.lessons);
+
   // Map lessons back into sections
-  if (body.sections && Array.isArray(body.sections)) {
-    body.sections.forEach((section: any, sIndex: number) => {
+  if (bodyData.sections && Array.isArray(bodyData.sections)) {
+    bodyData.sections.forEach((section: any) => {
       if (section.lessons && Array.isArray(section.lessons)) {
         section.lessons.forEach((lesson: any) => {
+          console.log(`Processing lesson: ${lesson.title}, tempKey: ${lesson.tempKey}`);
           if (lesson.tempKey && uploads.lessons[lesson.tempKey]) {
-            // Delete old lesson content if it exists and is being replaced
-            if (lesson.id && lesson.content && uploads.lessons[lesson.tempKey] !== lesson.content) {
-              // This will be handled in the service where we have access to existing lessons
-            }
+            console.log(`Setting content for ${lesson.tempKey}`);
             lesson.content = uploads.lessons[lesson.tempKey];
             delete lesson.tempKey;
           }
@@ -200,8 +203,11 @@ const updateCourse = catchAsync(async (req, res) => {
     });
   }
 
+  // Debug final body
+  console.log('Final body before service:', JSON.stringify(bodyData, null, 2));
+
   // Update course
-  const result = await courseService.updateCourseIntoDb(id, user.id, body);
+  const result = await courseService.updateCourseIntoDb(id, user.id, bodyData);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
