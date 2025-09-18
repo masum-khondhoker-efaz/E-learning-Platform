@@ -2,9 +2,7 @@ import { z } from 'zod';
 
 const createPrivacyPolicySchema = z.object({
   body: z.object({
-    // heading: z.string({
-    //   required_error: 'Heading is required!',
-    // }),
+    heading: z.string().optional(),
     content: z.string({
       required_error: 'Content is required!',
     }),
@@ -13,12 +11,12 @@ const createPrivacyPolicySchema = z.object({
 
 const updatePrivacyPolicySchema = z.object({
   body: z.object({
-    // heading: z.string().optional(),
-    content: z.string().optional(),
+    heading: z.string().optional(),
+    content: z.string(),
   }),
 });
 
 export const privacyPolicyValidation = {
   createPrivacyPolicySchema,
-  updatePrivacyPolicySchema
+  updatePrivacyPolicySchema,
 };

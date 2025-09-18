@@ -48,6 +48,17 @@ const getMyTestAttempts = catchAsync(async (req, res) => {
   });
 });
 
+const getMyTestAttemptById = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const result = await testAttemptService.getMyTestAttemptByIdFromDb(user.id, req.params.id);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'TestAttempt details retrieved successfully',
+    data: result,
+  });
+});
+
 const updateTestAttempt = catchAsync(async (req, res) => {
   const user = req.user as any;
    // Make sure to extract the gradings array from the request body
@@ -81,6 +92,7 @@ export const testAttemptController = {
   getTestAttemptList,
   getTestAttemptById,
   getMyTestAttempts,
+  getMyTestAttemptById,
   updateTestAttempt,
   deleteTestAttempt,
 };

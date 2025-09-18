@@ -9,7 +9,7 @@ const router = express.Router();
 
 router.post(
   '/',
-  auth(UserRoleEnum.CUSTOMER),
+  auth(UserRoleEnum.STUDENT),
   validateRequest(reviewValidation.createReviewSchema),
   reviewController.createReview,
 );
@@ -20,14 +20,14 @@ router.get('/barber', auth(), reviewController.getReviewListForBarber);
 
 router.patch(
   '/:id',
-  auth(UserRoleEnum.CUSTOMER),
+  auth(UserRoleEnum.STUDENT),
   validateRequest(reviewValidation.updateReviewSchema),
   reviewController.updateReview,
 );
 
 router.delete(
   '/:id',
-  auth(UserRoleEnum.CUSTOMER, UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   reviewController.deleteReview,
 );
 

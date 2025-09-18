@@ -10,6 +10,12 @@ import { courseRoutes } from '../modules/course/course.routes';
 import { testRoutes } from '../modules/test/test.routes';
 import test from 'node:test';
 import { testAttemptRoutes } from '../modules/testAttempt/testAttempt.routes';
+import { enrolledCourseRoutes } from '../modules/enrolledCourse/enrolledCourse.routes';
+import { aboutUsRoutes } from '../modules/aboutUs/aboutUs.routes';
+import { helpAndSupportRoutes } from '../modules/helpAndSupport/helpAndSupport.routes';
+import { faqRoutes } from '../modules/faq/faq.routes';
+import { studentProgressRoutes } from '../modules/studentProgress/studentProgress.routes';
+import { certificateRoutes } from '../modules/certificate/certificate.routes';
 
 const router = express.Router();
 
@@ -35,6 +41,18 @@ const moduleRoutes = [
     route: privacyPolicyRoutes,
   },
   {
+    path: '/about-us',
+    route: aboutUsRoutes,
+  },
+  {
+    path: '/help-and-support',
+    route: helpAndSupportRoutes,
+  },
+  {
+    path: '/faqs',
+    route: faqRoutes,
+  },
+  {
     path: '/support',
     route: supportRepliesRoutes,
   },
@@ -55,8 +73,20 @@ const moduleRoutes = [
     route: testRoutes,
   },
   {
+    path: '/enrolled-courses',
+    route: enrolledCourseRoutes,
+  },
+  {
     path: '/attempt-test',
     route: testAttemptRoutes,
+  },
+  {
+    path: '/student-progress',
+    route: studentProgressRoutes,
+  },
+  {
+    path: '/certificates',
+    route: certificateRoutes,
   },
 ];
 

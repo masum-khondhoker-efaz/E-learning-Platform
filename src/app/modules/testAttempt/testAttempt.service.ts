@@ -1,6 +1,7 @@
 import prisma from '../../utils/prisma';
 import {
   AttemptStatus,
+  PaymentStatus,
   QuestionType,
   ResponseStatus,
   UserRoleEnum,
@@ -40,6 +41,31 @@ function arraysEqual(
 
 const submitTestAttemptIntoDb = async (userId: string, data: any) => {
   return await prisma.$transaction(async tx => {
+    //Get courseId from testId
+    const testDetails = await tx.test.findUnique({
+      where: { id: data.testId },
+      select: { courseId: true },
+    });
+    if (!testDetails) {
+      throw new AppError(httpStatus.NOT_FOUND, 'Test not found');
+    }
+
+    //enrollment check
+    const studentCheck = await tx.enrolledCourse.findFirst({
+      where: {
+        userId: userId,
+        courseId: testDetails.courseId,
+        paymentStatus: PaymentStatus.COMPLETED,
+      },
+    });
+
+    if (!studentCheck) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'You must be enrolled in the course to take the test',
+      );
+    }
+
     // Check if test exists
     const test = await tx.test.findUnique({
       where: { id: data.testId },
@@ -246,10 +272,12 @@ const getTestAttemptByIdFromDb = async (
           title: true,
           totalMarks: true,
           passingScore: true,
+          courseId: true,
         },
       },
     },
   });
+
   if (!result) {
     throw new AppError(httpStatus.NOT_FOUND, 'testAttempt not found');
   }
@@ -426,6 +454,7 @@ const getMyTestAttemptsFromDb = async (userId: string) => {
           title: true,
           totalMarks: true,
           passingScore: true,
+          courseId: true,
         },
       },
     },
@@ -438,8 +467,62 @@ const getMyTestAttemptsFromDb = async (userId: string) => {
     return { message: 'No test attempts found' };
   }
   // Show only graded attempts
-   const gradedAttempts = result.filter(attempt => attempt.status === AttemptStatus.GRADED);
-   return gradedAttempts;
+  const gradedAttempts = result.filter(
+    attempt => attempt.status === AttemptStatus.GRADED,
+  );
+  return gradedAttempts;
+};
+
+const getMyTestAttemptByIdFromDb = async (
+  userId: string,
+  testAttemptId: string,
+) => {
+  const result = await prisma.testAttempt.findFirst({
+    where: {
+      id: testAttemptId,
+      userId: userId,
+    },
+    include: {
+      responses: {
+        include: {
+          question: {
+            select: {
+              title: true,
+              type: true,
+              marks: true,
+            },
+          },
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          image: true,
+        },
+      },
+      test: {
+        select: {
+          title: true,
+          totalMarks: true,
+          passingScore: true,
+          courseId: true,
+        },
+      },
+    },
+  });
+
+  if (!result) {
+    throw new AppError(httpStatus.NOT_FOUND, 'testAttempt not found');
+  }
+  if (result.status !== AttemptStatus.GRADED) {
+    throw new AppError(
+      httpStatus.FORBIDDEN,
+      'You can only view details of graded attempts',
+    );
+  }
+  return result;
 };
 
 const deleteTestAttemptItemFromDb = async (
@@ -465,6 +548,7 @@ export const testAttemptService = {
   getTestAttemptListFromDb,
   getTestAttemptByIdFromDb,
   getMyTestAttemptsFromDb,
+  getMyTestAttemptByIdFromDb,
   updateTestAttemptIntoDb,
   gradeShortAnswers,
   deleteTestAttemptItemFromDb,

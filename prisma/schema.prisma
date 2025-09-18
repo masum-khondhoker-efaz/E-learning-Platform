@@ -32,19 +32,11 @@ model User {
   updatedAt         DateTime      @updatedAt
 
   // Relationships
-  roomsSent        Room[]             @relation("SenderRelation")
-  roomsReceived    Room[]             @relation("ReceiverRelation")
-  roomParticipants RoomUser[]
-  chatsSent        Chat[]             @relation("SenderRelation")
-  chatsReceived    Chat[]             @relation("ReceiverRelation")
-  createdRooms     Room[]             @relation("CreatorRelation")
   Review           Review[]
   Faq              Faq[]
   TermAndCondition TermAndCondition[]
   PrivacyPolicy    PrivacyPolicy[]
   Admin            Admin[]
-  Support          Support[]
-  Reply            Reply[]
   Notification     Notification[]
   Payment          Payment[]
   Company          Company[]
@@ -52,6 +44,11 @@ model User {
   Course           Course[]
   Test             Test[]
   TestAttempt      TestAttempt[]
+  EnrolledCourse   EnrolledCourse[]
+  Certificate      Certificate[]
+  StudentProgress  StudentProgress[]
+  AboutUs          AboutUs[]
+  HelpAndSupport   HelpAndSupport[]
 
   @@map("users")
 }
@@ -120,10 +117,14 @@ model Course {
   updatedAt              DateTime @updatedAt
 
   // Relationships
-  user     User      @relation(fields: [userId], references: [id])
-  category Category  @relation(fields: [categoryId], references: [id])
-  Section  Section[]
-  Test     Test[]
+  user            User              @relation(fields: [userId], references: [id])
+  category        Category          @relation(fields: [categoryId], references: [id])
+  Section         Section[]
+  Test            Test[]
+  EnrolledCourse  EnrolledCourse[]
+  Payment         Payment[]
+  Certificate     Certificate[]
+  StudentProgress StudentProgress[]
 
   @@map("courses")
 }
@@ -138,45 +139,77 @@ model Section {
   Lesson    Lesson[]
 
   // Relationships
-  course Course @relation(fields: [courseId], references: [id])
+  course          Course            @relation(fields: [courseId], references: [id])
+  StudentProgress StudentProgress[]
 
   @@unique([courseId, order])
   @@map("sections")
 }
 
 model Lesson {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  sectionId String   @db.ObjectId
-  title     String
-  content   String
-  order     Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  sectionId     String   @db.ObjectId
+  title         String
+  content       String
+  order         Int
+  videoDuration Int? // Duration in seconds (if video content)
+  estimatedTime Int? // Estimated time to complete in minutes
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relationships
-  section Section @relation(fields: [sectionId], references: [id])
+  section         Section           @relation(fields: [sectionId], references: [id])
+  StudentProgress StudentProgress[]
 
   @@unique([sectionId, order])
   @@map("lessons")
 }
 
-model Chat {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  senderId   String   @db.ObjectId
-  receiverId String?  @db.ObjectId // Nullable for group chats
-  roomId     String   @db.ObjectId
-  message    String
-  images     String[]
-  isRead     Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+model EnrolledCourse {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String        @db.ObjectId
+  courseId      String        @db.ObjectId
+  progress      Float         @default(0) // Percentage of course completed
+  paymentStatus PaymentStatus @default(PENDING) // e.g., PENDING, COMPLETED
+  invoiceId     String?
+  isCompleted   Boolean       @default(false)
+  enrolledAt    DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   // Relationships
-  sender   User  @relation("SenderRelation", fields: [senderId], references: [id])
-  receiver User? @relation("ReceiverRelation", fields: [receiverId], references: [id]) // Optional for group chats
-  room     Room  @relation(fields: [roomId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
 
-  @@map("chats")
+  @@unique([userId, courseId])
+  @@map("enrolled_courses")
+}
+
+model StudentProgress {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
+  courseId    String   @db.ObjectId
+  lessonId    String   @db.ObjectId
+  sectionId   String   @db.ObjectId
+  isCompleted Boolean  @default(false)
+  // progress    Float    @default(0) // Percentage completed (0-100)
+  // timeSpent   Int      @default(0) // Time spent in seconds
+  // lastViewed  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson  Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  // @@index([lastViewed])
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([courseId])
+  @@index([lessonId])
+  @@index([isCompleted])
+  @@map("student_progress")
 }
 
 model Faq {
@@ -210,22 +243,21 @@ model Notification {
 }
 
 model Payment {
-  id                   String        @id @default(auto()) @map("_id") @db.ObjectId
-  userId               String        @db.ObjectId
-  stripeSubscriptionId String?
-  paymentIntentId      String?
-  paymentMethodId      String?
-  paymentAmount        Float
-  bookingId            String?       @db.ObjectId
-  paymentDate          DateTime      @default(now())
-  amountProvider       String
-  amountReceiver       String?
-  invoiceId            String?
-  status               PaymentStatus @default(PENDING)
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String        @db.ObjectId
+  paymentIntentId String?
+  paymentMethodId String?
+  paymentAmount   Float
+  courseId        String        @db.ObjectId
+  paymentDate     DateTime      @default(now())
+  amountProvider  String
+  invoiceId       String?
+  status          PaymentStatus @default(PENDING)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  user User @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
 
   @@map("payments")
 }
@@ -244,23 +276,7 @@ model PrivacyPolicy {
   @@map("privacy_policies")
 }
 
-model Reply {
-  id        String      @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String      @db.ObjectId
-  supportId String?     @db.ObjectId
-  reportId  String?     @db.ObjectId
-  message   String
-  type      ReplyType   @default(SUPPORT)
-  status    ReplyStatus @default(PENDING)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
 
-  // Relationships
-  support Support? @relation(fields: [supportId], references: [id])
-  user    User     @relation(fields: [userId], references: [id])
-
-  @@map("replies")
-}
 
 model Review {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -279,60 +295,34 @@ model Review {
   @@map("reviews")
 }
 
-model Room {
-  id               String   @id @default(auto()) @map("_id") @db.ObjectId
-  type             RoomType @default(ONE_TO_ONE) // Type: One-to-one or Group chat
-  groupName        String? // Name of the group (for group chats)
-  groupDescription String? // Description of the group (for group chats)
-  groupImage       String? // Image of the group (for group chats)
-  senderId         String?  @db.ObjectId
-  receiverId       String?  @db.ObjectId
-  creatorId        String?  @db.ObjectId
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
 
-  // Relationships
-  sender   User? @relation("SenderRelation", fields: [senderId], references: [id])
-  receiver User? @relation("ReceiverRelation", fields: [receiverId], references: [id])
-  creator  User? @relation("CreatorRelation", fields: [creatorId], references: [id])
 
-  participants RoomUser[] // Relationship to participants (RoomUser table)
-  chat         Chat[]
-
-  @@map("rooms")
-}
-
-model RoomUser {
-  id     String @id @default(auto()) @map("_id") @db.ObjectId
-  roomId String @db.ObjectId
-  userId String @db.ObjectId
-
-  // Relationships
-  room Room @relation(fields: [roomId], references: [id])
-  user User @relation(fields: [userId], references: [id])
-
-  @@unique([userId, roomId])
-  @@map("room_users")
-}
-
-model Support {
-  id            String        @id @default(auto()) @map("_id") @db.ObjectId
-  userId        String        @db.ObjectId
-  userName      String
-  subject       String?
-  message       String
-  status        SupportStatus @default(OPEN)
-  type          SupportType
-  saloonOwnerId String?       @db.ObjectId
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+model AboutUs {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  heading   String?
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relationships
   user User @relation(fields: [userId], references: [id])
 
-  Reply Reply[]
+  @@map("about_us")
+}
 
-  @@map("supports")
+model HelpAndSupport {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  heading   String?
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("help_and_support")
 }
 
 model TermAndCondition {
@@ -371,6 +361,7 @@ model Test {
   @@index([courseId])
   @@index([isActive])
   @@index([isPublished])
+  @@map("tests")
 }
 
 model Question {
@@ -394,6 +385,7 @@ model Question {
   @@index([testId])
   @@index([type])
   @@index([order])
+  @@map("questions")
 }
 
 model Option {
@@ -408,6 +400,7 @@ model Option {
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([questionId])
+  @@map("options")
 }
 
 model Answer {
@@ -421,25 +414,26 @@ model Answer {
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([questionId])
+  @@map("answers")
 }
 
 // Track test attempts and results
 model TestAttempt {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId       String   @db.ObjectId
-  testId       String   @db.ObjectId
-  score        Int      // Auto-calculated score (MCQ + TrueFalse)
-  totalMarks   Int      // Total marks of the test
-  percentage   Float    // Auto-calculated percentage
-  isPassed     Boolean  // Based on auto-graded questions only
-  status       AttemptStatus @default(SUBMITTED) // New field
-  timeSpent    Int      // Time spent in seconds
-  completedAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String        @db.ObjectId
+  testId      String        @db.ObjectId
+  score       Int // Auto-calculated score (MCQ + TrueFalse)
+  totalMarks  Int // Total marks of the test
+  percentage  Float // Auto-calculated percentage
+  isPassed    Boolean // Based on auto-graded questions only
+  status      AttemptStatus @default(SUBMITTED) // New field
+  timeSpent   Int // Time spent in seconds
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  test Test @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test      Test           @relation(fields: [testId], references: [id], onDelete: Cascade)
   responses UserResponse[]
 
   @@index([userId])
@@ -447,20 +441,21 @@ model TestAttempt {
   @@index([status]) // New index
   @@index([isPassed])
   @@index([createdAt])
+  @@map("test_attempts")
 }
 
 model UserResponse {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  attemptId       String   @db.ObjectId
-  questionId      String   @db.ObjectId
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  attemptId       String         @db.ObjectId
+  questionId      String         @db.ObjectId
   questionType    QuestionType
   selectedOptions String[] // For MCQ: array of option IDs
-  shortAnswer     String?  // For short answers
+  shortAnswer     String? // For short answers
   isCorrect       Boolean? // Null for short answers initially
-  marksObtained   Int?     // Null for short answers initially
+  marksObtained   Int? // Null for short answers initially
   status          ResponseStatus @default(SUBMITTED) // New field
-  timeSpent       Int?     // Time spent on this question in seconds
-  instructorNotes String?  // For manual grading notes
+  timeSpent       Int? // Time spent on this question in seconds
+  instructorNotes String? // For manual grading notes
 
   attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
@@ -468,19 +463,36 @@ model UserResponse {
   @@index([attemptId])
   @@index([questionId])
   @@index([status]) // New index
+  @@map("user_responses")
+}
+
+model Certificate {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String   @db.ObjectId
+  courseId      String   @db.ObjectId
+  certificateId String   @unique
+  issueDate     DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relationships
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@map("certificates")
 }
 
 // New Enums
 enum AttemptStatus {
-  SUBMITTED     // Just submitted, auto-grading done
-  UNDER_REVIEW  // Short answers need manual grading
-  GRADED        // Fully graded (auto + manual)
-  PUBLISHED     // Grades released to student
+  SUBMITTED // Just submitted, auto-grading done
+  UNDER_REVIEW // Short answers need manual grading
+  GRADED // Fully graded (auto + manual)
+  PUBLISHED // Grades released to student
 }
 
 enum ResponseStatus {
-  SUBMITTED    // Response submitted
-  AUTO_GRADED  // MCQ/TrueFalse graded
+  SUBMITTED // Response submitted
+  AUTO_GRADED // MCQ/TrueFalse graded
   MANUAL_GRADED // Short answer graded by instructor
 }
 

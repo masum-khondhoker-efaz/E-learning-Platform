@@ -25,6 +25,11 @@ router.get(
   auth(UserRoleEnum.STUDENT),
   testAttemptController.getMyTestAttempts,
 );
+router.get(
+  '/my-grades/:id',
+  auth(UserRoleEnum.STUDENT),
+  testAttemptController.getMyTestAttemptById,
+);
 
 router.get(
   '/:id',

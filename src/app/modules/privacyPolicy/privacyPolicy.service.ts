@@ -7,6 +7,12 @@ import httpStatus from 'http-status';
 const createPrivacyPolicyIntoDb = async (userId: string, data: {
   content: string;
 }) => {
+
+  // check if there is any previous Privacy & Policy
+  const existingPrivacyPolicy = await prisma.privacyPolicy.findFirst();
+  if (existingPrivacyPolicy) {
+    throw new AppError(httpStatus.CONFLICT, 'Privacy & Policy already exists');
+  }
   
     const result = await prisma.privacyPolicy.create({ 
     data: {
