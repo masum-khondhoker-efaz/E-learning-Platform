@@ -3,7 +3,7 @@ import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 
 const markLessonCompleted = async (userId: string, lessonId: string) => {
-  return await prisma.$transaction(async tx => {
+  return await prisma.$transaction(async (tx) => {
     // Get lesson details with section and course
     const lesson = await tx.lesson.findUnique({
       where: { id: lessonId },
@@ -52,25 +52,6 @@ const markLessonCompleted = async (userId: string, lessonId: string) => {
         data: {
           isCompleted: true,
         },
-        include: {
-          lesson: {
-            select: {
-              title: true,
-              order: true,
-            },
-          },
-          section: {
-            select: {
-              title: true,
-              order: true,
-            },
-          },
-          course: {
-            select: {
-              courseTitle: true,
-            },
-          },
-        },
       });
     } else {
       // Create new progress record as completed
@@ -82,30 +63,83 @@ const markLessonCompleted = async (userId: string, lessonId: string) => {
           lessonId: lessonId,
           isCompleted: true,
         },
-        include: {
-          lesson: {
-            select: {
-              title: true,
-              order: true,
-            },
-          },
-          section: {
-            select: {
-              title: true,
-              order: true,
-            },
-          },
-          course: {
-            select: {
-              courseTitle: true,
-            },
-          },
-        },
       });
     }
 
-    return progress;
+    // Calculate progress INSIDE the transaction
+    const courseProgress = await calculateProgressInsideTransaction(tx, userId, lesson.section.courseId);
+
+    // Get the progress record with includes for the response
+    const progressWithDetails = await tx.studentProgress.findUnique({
+      where: { id: progress.id },
+      include: {
+        lesson: {
+          select: {
+            title: true,
+            order: true,
+          },
+        },
+        section: {
+          select: {
+            title: true,
+            order: true,
+          },
+        },
+        course: {
+          select: {
+            courseTitle: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...progressWithDetails,
+      overallProgress: courseProgress.overallProgress,
+      completedLessons: courseProgress.completedLessons,
+      totalLessons: courseProgress.totalLessons,
+    };
   });
+};
+
+// Helper function to calculate progress inside transaction
+const calculateProgressInsideTransaction = async (tx: any, userId: string, courseId: string) => {
+  const progress = await tx.studentProgress.findMany({
+    where: {
+      userId: userId,
+      courseId: courseId,
+    },
+  });
+
+  // Calculate overall course progress
+  const course = await tx.course.findUnique({
+    where: { id: courseId },
+    include: {
+      Section: {
+        include: {
+          Lesson: true,
+        },
+      },
+    },
+  });
+
+  if (!course) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+  }
+
+  const totalLessons = course.Section.reduce(
+    (sum: number, section: { Lesson: any[] }) => sum + section.Lesson.length,
+    0,
+  );
+  const completedLessons = progress.filter((p: { isCompleted: boolean }) => p.isCompleted).length;
+  const overallProgress =
+    totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0;
+
+  return {
+    overallProgress: Math.round(overallProgress),
+    completedLessons,
+    totalLessons,
+  };
 };
 
 const markLessonIncomplete = async (userId: string, lessonId: string) => {
@@ -141,7 +175,79 @@ const markLessonIncomplete = async (userId: string, lessonId: string) => {
   });
 };
 
-const getStudentProgress = async (userId: string, courseId: string) => {
+const getACourseDetailsFromDb = async (userId: string, courseId: string) => {
+  // Check if user is enrolled in the course
+  const enrollment = await prisma.enrolledCourse.findFirst({
+    where: {
+      userId: userId,
+      courseId: courseId,
+    },
+  });
+
+  if (!enrollment) {
+    throw new AppError(httpStatus.FORBIDDEN, 'You are not enrolled in this course');
+  }
+
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    include: {
+      Section: {
+        include: {
+          Lesson: {
+            select: {
+              id: true,
+              title: true,
+              content: true,
+              order: true,
+            },
+            orderBy: { order: 'asc' },
+          },
+        },
+        orderBy: { order: 'asc' },
+      },
+    },
+  });
+
+  if (!course) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+  }
+
+  return course;
+};
+
+const getAllCourseProgress = async (userId: string) => {
+  
+
+  const enrollments = await prisma.enrolledCourse.findMany({
+    where: { userId: userId },
+    select: {
+      courseId: true,
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+        },
+      },
+    },
+  });
+
+  const progressData = await Promise.all(
+    enrollments.map(async enrollment => {
+      const progress = await getAStudentProgress(userId, enrollment.courseId);
+      // Exclude progressBySection from the response
+      const { progressBySection,lessons, ...restProgress } = progress;
+      return {
+        courseId: enrollment.courseId,
+        courseTitle: enrollment.course.courseTitle,
+        progress: restProgress,
+      };
+    }),
+  );
+
+  return progressData;
+};
+
+const getAStudentProgress = async (userId: string, courseId: string) => {
   const progress = await prisma.studentProgress.findMany({
     where: {
       userId: userId,
@@ -295,7 +401,9 @@ const getCourseCompletionStatus = async (userId: string, courseId: string) => {
 export const studentProgressService = {
   markLessonCompleted,
   markLessonIncomplete,
-  getStudentProgress,
+  getACourseDetailsFromDb,
+  getAllCourseProgress,
+  getAStudentProgress,
   getLessonCompletionStatus,
   getCourseCompletionStatus,
 };

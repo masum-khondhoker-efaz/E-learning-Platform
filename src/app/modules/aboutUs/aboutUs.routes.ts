@@ -18,7 +18,7 @@ router.get('/', auth(), aboutUsController.getAboutUsList);
 
 router.get('/:id', auth(), aboutUsController.getAboutUsById);
 
-router.put(
+router.patch(
   '/:id',
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   validateRequest(aboutUsValidation.updateSchema),

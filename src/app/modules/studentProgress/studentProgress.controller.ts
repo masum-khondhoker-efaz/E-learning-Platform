@@ -6,10 +6,9 @@ import { studentProgressService } from './studentProgress.service';
 // studentProgress.controller.ts
 const markLessonCompleted = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const lessonId = req.params.id;
   const result = await studentProgressService.markLessonCompleted(
     user.id,
-    lessonId,
+    req.body.lessonId,
   );
 
   sendResponse(res, {
@@ -36,10 +35,38 @@ const markLessonIncomplete = catchAsync(async (req, res) => {
   });
 });
 
-const getCourseProgress = catchAsync(async (req, res) => {
+const getACourseDetails = catchAsync(async (req, res) => {
   const user = req.user as any;
   const courseId = req.params.id;
-  const result = await studentProgressService.getStudentProgress(
+  const result = await studentProgressService.getACourseDetailsFromDb(
+    user.id,
+    courseId,
+  );
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Course details retrieved successfully',
+    data: result,
+  });
+});
+
+const getMyCoursesProgress = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const result = await studentProgressService.getAllCourseProgress(user.id);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'My courses progress retrieved successfully',
+    data: result,
+  });
+});
+
+const getACourseProgress = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const courseId = req.params.id;
+  const result = await studentProgressService.getAStudentProgress(
     user.id,
     courseId,
   );
@@ -87,7 +114,9 @@ const getCourseCompletion = catchAsync(async (req, res) => {
 export const studentProgressController = {
   markLessonCompleted,
   markLessonIncomplete,
-  getCourseProgress,
+  getACourseDetails,
+  getMyCoursesProgress,
+  getACourseProgress,
   getLessonStatus,
   getCourseCompletion,
 };

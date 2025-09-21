@@ -6,8 +6,7 @@ import { certificateService } from './certificate.service';
 // certificate.controller.ts
 const issueCertificate = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const courseId = req.params.id;
-  const result = await certificateService.issueCertificate(user.id, courseId);
+  const result = await certificateService.issueCertificate(user.id, req.body.courseId);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -42,6 +41,23 @@ const getCertificates = catchAsync(async (req, res) => {
     statusCode: httpStatus.OK,
     success: true,
     message: 'All certificates retrieved successfully',
+    data: result,
+  });
+});
+
+const getACertificate = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const certificateId = req.params.id;
+  console.log(certificateId, 'certificateId');
+  const result = await certificateService.getCertificateByIdForAdmin(
+    certificateId,
+    user.id,
+  );
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Certificate details retrieved successfully',
     data: result,
   });
 });
@@ -90,6 +106,7 @@ export const certificateController = {
   issueCertificate,
   checkCompletion,
   getCertificates,
+  getACertificate,
   getMyCertificates,
   getCertificate,
   verifyCertificate,

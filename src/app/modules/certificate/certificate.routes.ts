@@ -8,15 +8,21 @@ import { UserRoleEnum } from '@prisma/client';
 const router = express.Router();
 
 router.post(
-  '/courses/:id',
+  '/courses',
   auth(),
   certificateController.issueCertificate,
 );
 
 router.get(
-  '/all-certificates',
+  '/all-issued-certificates',
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   certificateController.getCertificates,
+);
+
+router.get(
+  '/a-issued-certificates/:id',
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  certificateController.getACertificate,
 );
 
 router.get(

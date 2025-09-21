@@ -14,12 +14,11 @@ router.post(
   reviewController.createReview,
 );
 
-router.get('/saloon/:id', auth(), reviewController.getReviewListForSaloon);
+router.get('/courses/:id', auth(), reviewController.getReviewListForACourse);
 
-router.get('/barber', auth(), reviewController.getReviewListForBarber);
 
 router.patch(
-  '/:id',
+  '/courses/:id',
   auth(UserRoleEnum.STUDENT),
   validateRequest(reviewValidation.updateReviewSchema),
   reviewController.updateReview,

@@ -14,9 +14,9 @@ const createReview = catchAsync(async (req, res) => {
   });
 });
 
-const getReviewListForSaloon = catchAsync(async (req, res) => {
+const getReviewListForACourse = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await reviewService.getReviewListForSaloonFromDb(user.id, req.params.id);
+  const result = await reviewService.getReviewListForACourseFromDb(user.id, req.params.id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -25,16 +25,7 @@ const getReviewListForSaloon = catchAsync(async (req, res) => {
   });
 });
 
-const getReviewListForBarber = catchAsync(async (req, res) => {
-  const user = req.user as any;
-  const result = await reviewService.getReviewListForBarberFromDb(user.id);
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,  
-    message: 'Review list for barber retrieved successfully',
-    data: result,
-  });
-});
+
 
 const getReviewById = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -71,8 +62,7 @@ const deleteReview = catchAsync(async (req, res) => {
 
 export const reviewController = {
   createReview,
-  getReviewListForSaloon,
-  getReviewListForBarber,
+  getReviewListForACourse,
   getReviewById,
   updateReview,
   deleteReview,

@@ -192,7 +192,7 @@ const getAllCertificatesFromDb = async (userId: string) => {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found');
   }
 
-  if (user.role === UserRoleEnum.ADMIN) {
+  if (user.role === UserRoleEnum.ADMIN || UserRoleEnum.ADMIN) {
     // Admin can see all certificates
     return await prisma.certificate.findMany({
       include: {
@@ -218,6 +218,49 @@ const getAllCertificatesFromDb = async (userId: string) => {
     // Students can see only their certificates
     return await getUserCertificates(userId);
   }
+};
+
+const getCertificateByIdForAdmin = async (certificateId: string, userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+  }
+
+  if (user.role !== UserRoleEnum.ADMIN && user.role !== UserRoleEnum.SUPER_ADMIN) {
+    throw new AppError(httpStatus.FORBIDDEN, 'Access denied');
+  }
+
+  const certificate = await prisma.certificate.findUnique({
+    where: {
+      id: certificateId,
+    },
+    include: {
+      user: {
+        select: {
+          fullName: true,
+          email: true,
+          image: true,
+        },
+      },
+      course: {
+        select: {
+          courseTitle: true,
+          courseShortDescription: true,
+          courseThumbnail: true,
+          instructorName: true,
+        },
+      },
+    },
+  });
+
+  if (!certificate) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Certificate not found');
+  }
+
+  return certificate;
 };
 
 const getUserCertificates = async (userId: string) => {
@@ -324,6 +367,7 @@ export const certificateService = {
   checkCourseCompletionAndIssueCertificate,
   getAllCertificatesFromDb,
   getUserCertificates,
+  getCertificateByIdForAdmin,
   getCertificateById,
   verifyCertificate,
 };

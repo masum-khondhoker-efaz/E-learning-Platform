@@ -49,6 +49,8 @@ model User {
   StudentProgress  StudentProgress[]
   AboutUs          AboutUs[]
   HelpAndSupport   HelpAndSupport[]
+  Support          Support[]
+  Reply            Reply[]
 
   @@map("users")
 }
@@ -276,26 +278,20 @@ model PrivacyPolicy {
   @@map("privacy_policies")
 }
 
-
-
 model Review {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId        String   @db.ObjectId
-  barberId      String   @db.ObjectId
-  saloonOwnerId String   @db.ObjectId
-  bookingId     String   @db.ObjectId
-  rating        Int
-  comment       String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  courseId  String   @db.ObjectId
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relationships
   user User @relation(fields: [userId], references: [id])
 
   @@map("reviews")
 }
-
-
 
 model AboutUs {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -482,6 +478,40 @@ model Certificate {
   @@map("certificates")
 }
 
+model Support {
+  id        String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String        @db.ObjectId
+  userEmail String
+  userPhone String?
+  message   String
+  status    SupportStatus @default(OPEN)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  Reply Reply[]
+
+  @@map("supports")
+}
+
+model Reply {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String      @db.ObjectId
+  supportId String?     @db.ObjectId
+  message   String
+  status    ReplyStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relationships
+  support Support? @relation(fields: [supportId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
+
+  @@map("replies")
+}
+
 // New Enums
 enum AttemptStatus {
   SUBMITTED // Just submitted, auto-grading done
@@ -547,11 +577,6 @@ enum SupportStatus {
   IN_PROGRESS
   RESOLVED
   CLOSED
-}
-
-enum SupportType {
-  CUSTOMER_QUESTION
-  CUSTOMER_COMPLAINT
 }
 
 enum UserRoleEnum {

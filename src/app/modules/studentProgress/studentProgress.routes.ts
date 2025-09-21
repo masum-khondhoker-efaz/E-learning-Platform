@@ -8,15 +8,23 @@ import { UserRoleEnum } from '@prisma/client';
 const router = express.Router();
 
 router.post(
-  '/lessons/:id/complete',
+  '/lessons',
   auth(UserRoleEnum.STUDENT),
   studentProgressController.markLessonCompleted,
 );
-router.post(
-  '/lessons/:id/incomplete',
+
+// router.post(
+//   '/lessons/:id/incomplete',
+//   auth(UserRoleEnum.STUDENT),
+//   studentProgressController.markLessonIncomplete,
+// );
+
+router.get(
+  '/course-details/:id',
   auth(UserRoleEnum.STUDENT),
-  studentProgressController.markLessonIncomplete,
+  studentProgressController.getACourseDetails,
 );
+
 router.get(
   '/lessons/:id',
   auth(UserRoleEnum.STUDENT),
@@ -24,9 +32,15 @@ router.get(
 );
 
 router.get(
+  '/my-courses-progress',
+  auth(),
+  studentProgressController.getMyCoursesProgress,
+);
+
+router.get(
   '/courses/:id',
   auth(UserRoleEnum.STUDENT),
-  studentProgressController.getCourseProgress,
+  studentProgressController.getACourseProgress,
 );
 
 router.get(

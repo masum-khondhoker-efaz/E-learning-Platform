@@ -7,21 +7,21 @@ import { helpAndSupportValidation } from './helpAndSupport.validation';
 const router = express.Router();
 
 router.post(
-'/',
-auth(),
-validateRequest(helpAndSupportValidation.createSchema),
-helpAndSupportController.createHelpAndSupport,
+  '/',
+  auth(),
+  validateRequest(helpAndSupportValidation.createSchema),
+  helpAndSupportController.createHelpAndSupport,
 );
 
 router.get('/', auth(), helpAndSupportController.getHelpAndSupportList);
 
 router.get('/:id', auth(), helpAndSupportController.getHelpAndSupportById);
 
-router.put(
-'/:id',
-auth(),
-validateRequest(helpAndSupportValidation.updateSchema),
-helpAndSupportController.updateHelpAndSupport,
+router.patch(
+  '/:id',
+  auth(),
+  validateRequest(helpAndSupportValidation.updateSchema),
+  helpAndSupportController.updateHelpAndSupport,
 );
 
 router.delete('/:id', auth(), helpAndSupportController.deleteHelpAndSupport);
