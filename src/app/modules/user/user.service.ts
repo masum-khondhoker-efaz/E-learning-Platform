@@ -47,6 +47,9 @@ const registerUserIntoDB = async (payload: any) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'User not created!');
   }
 
+  // if(payload.)
+
+
   // generate OTP + JWT token
   const { otp, otpToken } = generateOtpToken(user.email);
 

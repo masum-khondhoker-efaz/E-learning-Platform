@@ -32,25 +32,26 @@ model User {
   updatedAt         DateTime      @updatedAt
 
   // Relationships
-  Review           Review[]
-  Faq              Faq[]
-  TermAndCondition TermAndCondition[]
-  PrivacyPolicy    PrivacyPolicy[]
-  Admin            Admin[]
-  Notification     Notification[]
-  Payment          Payment[]
-  Company          Company[]
-  Category         Category[]
-  Course           Course[]
-  Test             Test[]
-  TestAttempt      TestAttempt[]
-  EnrolledCourse   EnrolledCourse[]
-  Certificate      Certificate[]
-  StudentProgress  StudentProgress[]
-  AboutUs          AboutUs[]
-  HelpAndSupport   HelpAndSupport[]
-  Support          Support[]
-  Reply            Reply[]
+  Review             Review[]
+  Faq                Faq[]
+  TermAndCondition   TermAndCondition[]
+  PrivacyPolicy      PrivacyPolicy[]
+  Admin              Admin[]
+  Notification       Notification[]
+  Payment            Payment[]
+  Company            Company[]
+  Category           Category[]
+  Course             Course[]
+  Test               Test[]
+  TestAttempt        TestAttempt[]
+  EnrolledCourse     EnrolledCourse[]
+  Certificate        Certificate[]
+  StudentProgress    StudentProgress[]
+  AboutUs            AboutUs[]
+  HelpAndSupport     HelpAndSupport[]
+  Support            Support[]
+  Reply              Reply[]
+  EmployeeCredential EmployeeCredential[]
 
   @@map("users")
 }
@@ -71,17 +72,82 @@ model Admin {
 
 model Company {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId         String   @db.ObjectId
+  userId         String?  @db.ObjectId
   companyName    String
+  companyEmail   String   @unique
   companyAddress String
-  vatId          String?
+  companyVatId   String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   // Relationships
-  user User @relation(fields: [userId], references: [id])
+  User               User?                @relation(fields: [userId], references: [id])
+  CompanyPurchase    CompanyPurchase[]
+  EmployeeCredential EmployeeCredential[]
+  Certificate        Certificate[]
 
   @@map("companies")
+}
+
+model CompanyPurchase {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  totalAmount Float?
+  invoiceId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  company Company               @relation(fields: [companyId], references: [id])
+  items   CompanyPurchaseItem[] // each item = one course purchased
+
+  @@map("company_purchases")
+}
+
+model CompanyPurchaseItem {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  purchaseId String   @db.ObjectId
+  courseId   String   @db.ObjectId
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  course     Course              @relation(fields: [courseId], references: [id])
+  purchase   CompanyPurchase     @relation(fields: [purchaseId], references: [id])
+  credential EmployeeCredential?
+
+  @@unique([purchaseId, courseId])
+  @@map("company_purchase_items")
+}
+
+model EmployeeCredential {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  companyId      String    @db.ObjectId
+  purchaseItemId String    @unique @db.ObjectId
+  courseId       String    @db.ObjectId
+  loginEmail     String    @unique
+  passwordHash   String
+  tempPassword   String?
+  isSent         Boolean   @default(false)
+  sentAt         DateTime?
+  isActivated    Boolean   @default(false)
+  activatedAt    DateTime?
+  firstName      String?
+  lastName       String?
+  dateOfBirth    DateTime?
+  userId         String?   @db.ObjectId
+  certificateId  String?   @db.ObjectId
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relationships
+  user         User?               @relation(fields: [userId], references: [id])
+  course       Course              @relation(fields: [courseId], references: [id])
+  purchaseItem CompanyPurchaseItem @relation(fields: [purchaseItemId], references: [id])
+  company      Company             @relation(fields: [companyId], references: [id])
+  Certificate  Certificate[]
+
+  @@map("employee_credentials")
 }
 
 model Category {
@@ -119,14 +185,16 @@ model Course {
   updatedAt              DateTime @updatedAt
 
   // Relationships
-  user            User              @relation(fields: [userId], references: [id])
-  category        Category          @relation(fields: [categoryId], references: [id])
-  Section         Section[]
-  Test            Test[]
-  EnrolledCourse  EnrolledCourse[]
-  Payment         Payment[]
-  Certificate     Certificate[]
-  StudentProgress StudentProgress[]
+  user                User                  @relation(fields: [userId], references: [id])
+  category            Category              @relation(fields: [categoryId], references: [id])
+  Section             Section[]
+  Test                Test[]
+  EnrolledCourse      EnrolledCourse[]
+  Payment             Payment[]
+  Certificate         Certificate[]
+  StudentProgress     StudentProgress[]
+  CompanyPurchaseItem CompanyPurchaseItem[]
+  EmployeeCredential  EmployeeCredential[]
 
   @@map("courses")
 }
@@ -463,17 +531,20 @@ model UserResponse {
 }
 
 model Certificate {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId        String   @db.ObjectId
-  courseId      String   @db.ObjectId
-  certificateId String   @unique
-  issueDate     DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String?  @db.ObjectId // for individual user purchases
+  employeeCredId String?  @db.ObjectId // for company-generated credentials
+  companyId      String?  @db.ObjectId
+  courseId       String   @db.ObjectId
+  certificateId  String   @unique
+  issueDate      DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  // Relationships
-  user   User   @relation(fields: [userId], references: [id])
-  course Course @relation(fields: [courseId], references: [id])
+  user         User?               @relation(fields: [userId], references: [id])
+  employeeCred EmployeeCredential? @relation(fields: [employeeCredId], references: [id])
+  company      Company?            @relation(fields: [companyId], references: [id])
+  course       Course              @relation(fields: [courseId], references: [id])
 
   @@map("certificates")
 }
