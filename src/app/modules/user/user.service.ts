@@ -20,7 +20,16 @@ interface UserWithOptionalPassword extends Omit<User, 'password'> {
   password?: string;
 }
 
-const registerUserIntoDB = async (payload: any) => {
+const registerUserIntoDB = async (payload: {
+  fullName: string;
+  email: string;
+  password: string;
+  companyName?: string;
+  companyEmail?: string;
+  companyAddress?: string;
+  companyVatId?: string;
+
+}) => {
   // check existing user
   if (payload.email) {
     const existingUser = await prisma.user.findUnique({
@@ -31,13 +40,15 @@ const registerUserIntoDB = async (payload: any) => {
     }
   }
 
+  const {email, fullName, password, ...rest} = payload;
   // hash password
   const hashedPassword = await bcrypt.hash(payload.password, 12);
 
   // create user
   const user = await prisma.user.create({
     data: {
-      ...payload,
+      fullName: fullName,
+      email: email,
       password: hashedPassword,
       isVerified: false, // mark as unverified until OTP confirmed
     },
@@ -47,7 +58,22 @@ const registerUserIntoDB = async (payload: any) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'User not created!');
   }
 
-  // if(payload.)
+
+   if(payload.companyName && payload.companyEmail && payload.companyAddress && payload.companyVatId){
+    // create company
+    const company = await prisma.company.create({
+      data: {
+        userId: user.id,
+        companyName: payload.companyName,
+        companyEmail: payload.companyEmail,
+        companyAddress: payload.companyAddress,
+        companyVatId: payload.companyVatId,
+      },
+    });
+    if (!company) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Company not created!');
+    }
+  }
 
 
   // generate OTP + JWT token
