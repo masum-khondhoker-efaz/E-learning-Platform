@@ -11,7 +11,7 @@ interface PurchasePayload {
   items: { courseId: string; emails: string[] }[];
 }
 
-const createCompanyPurchaseIntoDb = async (payload: PurchasePayload) => {
+const createCompanyPurchaseIntoDb = async (user: string, payload: PurchasePayload) => {
   const { companyId, items } = payload;
 
   // Start transaction
@@ -40,7 +40,7 @@ const createCompanyPurchaseIntoDb = async (payload: PurchasePayload) => {
             purchaseItemId: purchaseItem.id,
             courseId: item.courseId,
             loginEmail: email,
-            passwordHash,
+            password: passwordHash,
             tempPassword,
           },
         });
@@ -83,7 +83,7 @@ const updateCompanyPurchaseIntoDb = async (userId: string, companyPurchaseId: st
     const result = await prisma.companyPurchase.update({
       where:  {
         id: companyPurchaseId,
-        userId: userId,
+        // userId: userId,
     },
     data: {
       ...data,
@@ -99,7 +99,7 @@ const deleteCompanyPurchaseItemFromDb = async (userId: string, companyPurchaseId
     const deletedItem = await prisma.companyPurchase.delete({
       where: {
       id: companyPurchaseId,
-      userId: userId,
+      // userId: userId,
     },
   });
   if (!deletedItem) {

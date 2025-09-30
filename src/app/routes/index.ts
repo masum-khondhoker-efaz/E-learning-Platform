@@ -3,7 +3,6 @@ import { UserRouters } from '../modules/user/user.routes';
 import { AuthRouters } from '../modules/auth/auth.routes';
 import { termAndConditionRoutes } from '../modules/termAndCondition/termAndCondition.routes';
 import { privacyPolicyRoutes } from '../modules/privacyPolicy/privacyPolicy.routes';
-import { supportRepliesRoutes } from '../modules/supportReplies/supportReplies.routes';
 import { reviewRoutes } from '../modules/review/review.routes';
 import { categoryRoutes } from '../modules/category/category.routes';
 import { courseRoutes } from '../modules/course/course.routes';
@@ -51,10 +50,6 @@ const moduleRoutes = [
   {
     path: '/faqs',
     route: faqRoutes,
-  },
-  {
-    path: '/support',
-    route: supportRepliesRoutes,
   },
   {
     path: '/reviews',

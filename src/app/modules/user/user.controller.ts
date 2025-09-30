@@ -11,7 +11,7 @@ const registerUser = catchAsync(async (req, res) => {
 
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
-    message: 'User registered successfully',
+    message: 'OTP sent via your email successfully',
     data: result,
   });
 });
@@ -21,7 +21,7 @@ const resendUserVerificationEmail = catchAsync(async (req, res) => {
   const result = await UserServices.resendUserVerificationEmail(email);
   sendResponse(res, {
     statusCode: httpStatus.OK,
-    message: 'Verification email sent successfully',
+    message: 'OTP sent via your email successfully',
     data: result,
   });
 });
@@ -78,7 +78,7 @@ const resendOtp = catchAsync(async (req, res) => {
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'OTP sent successfully!',
+    message: 'OTP sent via your email successfully!',
     data: result,
   });
 });

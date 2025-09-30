@@ -17,6 +17,22 @@ const registerUser = z.object({
     password: z.string({
       required_error: 'Password is required!',
     }),
+    companyName: z.string({
+      required_error: 'Company name is required!',
+    }).optional(),
+    companyEmail: z
+      .string({
+        required_error: 'Company email is required!',
+      })
+      .email({
+        message: 'Invalid email format!',
+      }).optional(),
+      companyAddress: z.string({
+        required_error: 'Company address is required!',
+      }).optional(),
+      companyVatId: z.string({
+        required_error: 'Company VAT ID is required!',
+      }).optional(),
   }),
 });
 

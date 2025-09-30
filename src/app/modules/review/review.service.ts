@@ -45,6 +45,30 @@ const createReviewIntoDb = async (userId: string, data: any) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'Review not created');
   }
 
+  // Update course's average rating and total ratings
+  const courseReviews = await prisma.review.findMany({
+    where: {
+      courseId: data.courseId,
+    },
+    select: {
+      rating: true,
+    },
+  });
+
+  const totalRatings = courseReviews.length;
+  const averageRating =
+    courseReviews.reduce((sum, review) => sum + review.rating, 0) / totalRatings;
+
+  await prisma.course.update({
+    where: {
+      id: data.courseId,
+    },
+    data: {
+      avgRating: parseFloat(averageRating.toFixed(2)),
+      totalRatings: totalRatings,
+    },
+  });
+
   return result;
 };
 

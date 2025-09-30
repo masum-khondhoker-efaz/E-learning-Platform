@@ -12,11 +12,15 @@ const loginUserFromDB = async (payload: {
   email: string;
   password: string;
 }) => {
-  const userData = await prisma.user.findUniqueOrThrow({
+  const userData = await prisma.user.findUnique({
     where: {
       email: payload.email,
     },
   });
+
+  if (!userData) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+  }
 
   if (userData.password === null) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Password is not set');
@@ -39,6 +43,13 @@ const loginUserFromDB = async (payload: {
   //     'Please complete your profile before logging in',
   //   );
   // }
+
+  if(userData.status === UserStatus.PENDING || userData.isVerified === false){
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'Please verify your email before logging in',
+    );
+  }
 
   if (userData.status === UserStatus.BLOCKED) {
     throw new AppError(

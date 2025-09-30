@@ -119,7 +119,7 @@ async function generateUniqueEmployeeEmail(tx: any, companyEmail: string) {
  * - If checkout.companyId -> create CompanyPurchase + CompanyPurchaseItem(s) + EmployeeCredential(s)
  *   (employee credentials created with hashed password stored in DB; plain password emailed)
  */
-const markCheckoutPaid = async (checkoutId: string, paymentId: string) => {
+const markCheckoutPaid = async (userId: string, checkoutId: string, paymentId: string) => {
   // 1) Fetch checkout and cart items (sanity checks)
   const checkout = await prisma.checkout.findUnique({
     where: { id: checkoutId },
@@ -156,7 +156,7 @@ const markCheckoutPaid = async (checkoutId: string, paymentId: string) => {
         data: { status: CheckoutStatus.PAID, paymentId },
       });
 
-      // create enrolledCourse for each cart item (if not already enrolled)
+      // create + for each cart item (if not already enrolled)
       for (const item of checkout.cart.items) {
         const exists = await tx.enrolledCourse.findFirst({
           where: { userId: checkout.userId!, courseId: item.courseId },

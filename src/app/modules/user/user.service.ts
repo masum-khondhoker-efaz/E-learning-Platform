@@ -110,10 +110,8 @@ const registerUserIntoDB = async (payload: {
       </div>`,
   );
 
-  return {
-    message: 'OTP sent via email successfully',
-    otpToken, // return to client for verification step
-  };
+  return otpToken // return to client for verification step
+  
 };
 
 //resend verification email
@@ -165,10 +163,8 @@ const resendUserVerificationEmail = async (email: string) => {
   );
 
   // ✅ Return token for frontend to verify later
-  return {
-    message: 'OTP sent via your email successfully',
-    otpToken, // frontend must keep this for verification
-  };
+  return otpToken // frontend must keep this for verification
+  
 };
 
 const getMyProfileFromDB = async (id: string) => {
@@ -341,10 +337,8 @@ const forgotPassword = async (payload: { email: string }) => {
   );
 
   // ✅ Return token to frontend for later verification
-  return {
-    message: 'OTP sent via your email successfully',
-    otpToken, // frontend must send this back with OTP for verification
-  };
+  return otpToken // frontend must send this back with OTP for verification
+  
 };
 
 //resend otp
@@ -396,10 +390,8 @@ const resendOtpIntoDB = async (payload: { email: string }) => {
   );
 
   // ✅ Return token to frontend for verification
-  return {
-    message: 'OTP sent via your email successfully',
-    otpToken,
-  };
+  return otpToken
+
 };
 
 // verify otp

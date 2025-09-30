@@ -1,3 +1,4 @@
+import { Review } from './../../../../node_modules/.prisma/client/index.d';
 import prisma from '../../utils/prisma';
 import { UserRoleEnum, UserStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
@@ -107,10 +108,14 @@ const getCourseListFromDb = async (
   options: ISearchAndFilterOptions,
 ) => {
   // Ensure numeric values for price/rating filters
-  if (options.priceMin !== undefined) options.priceMin = Number(options.priceMin);
-  if (options.priceMax !== undefined) options.priceMax = Number(options.priceMax);
-  if (options.discountPriceMin !== undefined) options.discountPriceMin = Number(options.discountPriceMin);
-  if (options.discountPriceMax !== undefined) options.discountPriceMax = Number(options.discountPriceMax);
+  if (options.priceMin !== undefined)
+    options.priceMin = Number(options.priceMin);
+  if (options.priceMax !== undefined)
+    options.priceMax = Number(options.priceMax);
+  if (options.discountPriceMin !== undefined)
+    options.discountPriceMin = Number(options.discountPriceMin);
+  if (options.discountPriceMax !== undefined)
+    options.discountPriceMax = Number(options.discountPriceMax);
   if (options.rating !== undefined) options.rating = Number(options.rating);
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
@@ -129,18 +134,32 @@ const getCourseListFromDb = async (
 
   // Build filter query
   const filterFields: Record<string, any> = {
-  ...(options.courseLevel && { courseLevel: options.courseLevel }),
-  ...(options.categoryName && { category: { name: options.categoryName } }),
-  ...(options.certificate !== undefined && { certificate: options.certificate }),
-  ...(options.lifetimeAccess !== undefined && { lifetimeAccess: options.lifetimeAccess }),
-  ...(options.instructorName && { instructorName: options.instructorName }),
-  ...(options.instructorDesignation && { instructorDesignation: options.instructorDesignation }),
-  ...(options.rating !== undefined && { rating: Number(options.rating) }),
-  ...(options.priceMin !== undefined && { price: { gte: Number(options.priceMin) } }),
-  ...(options.priceMax !== undefined && { price: { lte: Number(options.priceMax) } }),
-  ...(options.discountPriceMin !== undefined && { discountPrice: { gte: Number(options.discountPriceMin) } }),
-  ...(options.discountPriceMax !== undefined && { discountPrice: { lte: Number(options.discountPriceMax) } }),
-};
+    ...(options.courseLevel && { courseLevel: options.courseLevel }),
+    ...(options.categoryName && { category: { name: options.categoryName } }),
+    ...(options.certificate !== undefined && {
+      certificate: options.certificate,
+    }),
+    ...(options.lifetimeAccess !== undefined && {
+      lifetimeAccess: options.lifetimeAccess,
+    }),
+    ...(options.instructorName && { instructorName: options.instructorName }),
+    ...(options.instructorDesignation && {
+      instructorDesignation: options.instructorDesignation,
+    }),
+    ...(options.rating !== undefined && { rating: Number(options.rating) }),
+    ...(options.priceMin !== undefined && {
+      price: { gte: Number(options.priceMin) },
+    }),
+    ...(options.priceMax !== undefined && {
+      price: { lte: Number(options.priceMax) },
+    }),
+    ...(options.discountPriceMin !== undefined && {
+      discountPrice: { gte: Number(options.discountPriceMin) },
+    }),
+    ...(options.discountPriceMax !== undefined && {
+      discountPrice: { lte: Number(options.discountPriceMax) },
+    }),
+  };
   const filterQuery = buildFilterQuery(filterFields);
 
   // Numeric range filters
@@ -157,7 +176,7 @@ const getCourseListFromDb = async (
 
   // Combine all queries
   const whereQuery = combineQueries(
-    { userId }, // filter by userId if needed
+    // { userId }, // filter by userId if needed
     searchQuery,
     filterQuery,
     priceQuery,
@@ -182,11 +201,11 @@ const getCourseListFromDb = async (
           name: true,
         },
       },
-      Section: {
-        include: {
-          Lesson: true,
-        },
-      },
+      // Section: {
+      //   include: {
+      //     Lesson: true,
+      //   },
+      // },
     },
   });
 
@@ -215,7 +234,24 @@ const getCourseByIdFromDb = async (userId: string, courseId: string) => {
       },
       Section: {
         include: {
-          Lesson: true,
+          Lesson: {
+            select: { title: true, order: true },
+            orderBy: { order: 'asc' },
+          },
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      },
+      Review: {
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          user: {
+            select: { id: true, fullName: true, image: true },
+          },
         },
       },
     },
@@ -233,7 +269,11 @@ const getCourseByIdFromDb = async (userId: string, courseId: string) => {
   return formattedResult;
 };
 
-const updateCourseIntoDb = async (courseId: string, userId: string, data: any) => {
+const updateCourseIntoDb = async (
+  courseId: string,
+  userId: string,
+  data: any,
+) => {
   return await prisma.$transaction(async tx => {
     // Check if course exists and belongs to user
     const existingCourse = await tx.course.findFirst({
@@ -280,35 +320,63 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
     const updatedCourse = await tx.course.update({
       where: { id: courseId },
       data: {
-        ...(data.courseTitle !== undefined && { courseTitle: data.courseTitle }),
-        ...(data.courseShortDescription !== undefined && { courseShortDescription: data.courseShortDescription }),
-        ...(data.courseDescription !== undefined && { courseDescription: data.courseDescription }),
-        ...(data.courseLevel !== undefined && { courseLevel: data.courseLevel }),
+        ...(data.courseTitle !== undefined && {
+          courseTitle: data.courseTitle,
+        }),
+        ...(data.courseShortDescription !== undefined && {
+          courseShortDescription: data.courseShortDescription,
+        }),
+        ...(data.courseDescription !== undefined && {
+          courseDescription: data.courseDescription,
+        }),
+        ...(data.courseLevel !== undefined && {
+          courseLevel: data.courseLevel,
+        }),
         ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
-        ...(data.certificate !== undefined && { certificate: data.certificate }),
-        ...(data.lifetimeAccess !== undefined && { lifetimeAccess: data.lifetimeAccess }),
+        ...(data.certificate !== undefined && {
+          certificate: data.certificate,
+        }),
+        ...(data.lifetimeAccess !== undefined && {
+          lifetimeAccess: data.lifetimeAccess,
+        }),
         ...(data.price !== undefined && { price: data.price }),
-        ...(data.discountPrice !== undefined && { discountPrice: data.discountPrice }),
-        ...(data.instructorName !== undefined && { instructorName: data.instructorName }),
-        ...(data.instructorImage !== undefined && { instructorImage: data.instructorImage }),
-        ...(data.instructorDesignation !== undefined && { instructorDesignation: data.instructorDesignation }),
-        ...(data.instructorDescription !== undefined && { instructorDescription: data.instructorDescription }),
-        ...(data.courseThumbnail !== undefined && { courseThumbnail: data.courseThumbnail }),
+        ...(data.discountPrice !== undefined && {
+          discountPrice: data.discountPrice,
+        }),
+        ...(data.instructorName !== undefined && {
+          instructorName: data.instructorName,
+        }),
+        ...(data.instructorImage !== undefined && {
+          instructorImage: data.instructorImage,
+        }),
+        ...(data.instructorDesignation !== undefined && {
+          instructorDesignation: data.instructorDesignation,
+        }),
+        ...(data.instructorDescription !== undefined && {
+          instructorDescription: data.instructorDescription,
+        }),
+        ...(data.courseThumbnail !== undefined && {
+          courseThumbnail: data.courseThumbnail,
+        }),
       },
     });
 
     // Step 2: Handle sections and lessons
     if (data.sections && Array.isArray(data.sections)) {
       const existingSections = existingCourse.Section;
-      const existingLessons = existingSections.flatMap(section => section.Lesson);
+      const existingLessons = existingSections.flatMap(
+        section => section.Lesson,
+      );
 
       // First, update all existing sections to temporary orders to avoid constraint violations
-      await Promise.all(existingSections.map((section, index) =>
-        tx.section.update({
-          where: { id: section.id },
-          data: { order: 10000 + index } // Temporary high order values
-        })
-      ));
+      await Promise.all(
+        existingSections.map((section, index) =>
+          tx.section.update({
+            where: { id: section.id },
+            data: { order: 10000 + index }, // Temporary high order values
+          }),
+        ),
+      );
 
       const sectionsToKeep: string[] = [];
       const lessonsToKeep: string[] = [];
@@ -345,13 +413,17 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
         // Process lessons for this section
         if (sectionData.lessons && Array.isArray(sectionData.lessons)) {
           // First, update all existing lessons in this section to temporary orders
-          const sectionLessons = existingLessons.filter(l => l.sectionId === sectionId);
-          await Promise.all(sectionLessons.map((lesson, index) =>
-            tx.lesson.update({
-              where: { id: lesson.id },
-              data: { order: 10000 + index }
-            })
-          ));
+          const sectionLessons = existingLessons.filter(
+            l => l.sectionId === sectionId,
+          );
+          await Promise.all(
+            sectionLessons.map((lesson, index) =>
+              tx.lesson.update({
+                where: { id: lesson.id },
+                data: { order: 10000 + index },
+              }),
+            ),
+          );
 
           for (let lIndex = 0; lIndex < sectionData.lessons.length; lIndex++) {
             const lessonData = sectionData.lessons[lIndex];
@@ -359,8 +431,13 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
 
             if (lessonId) {
               // Update existing lesson - check if content changed and delete old file
-              const existingLesson = existingLessons.find(l => l.id === lessonId);
-              if (existingLesson && lessonData.content !== existingLesson.content) {
+              const existingLesson = existingLessons.find(
+                l => l.id === lessonId,
+              );
+              if (
+                existingLesson &&
+                lessonData.content !== existingLesson.content
+              ) {
                 // Content changed, delete old file
                 await deleteFileFromSpace(existingLesson.content);
               }
@@ -388,8 +465,10 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
           }
 
           // Delete lessons that were removed from this section
-          const lessonsToDelete = existingLessons.filter(lesson =>
-            lesson.sectionId === sectionId && !lessonsToKeep.includes(lesson.id)
+          const lessonsToDelete = existingLessons.filter(
+            lesson =>
+              lesson.sectionId === sectionId &&
+              !lessonsToKeep.includes(lesson.id),
           );
 
           for (const lesson of lessonsToDelete) {
@@ -397,30 +476,34 @@ const updateCourseIntoDb = async (courseId: string, userId: string, data: any) =
               await deleteFileFromSpace(lesson.content);
             }
             await tx.lesson.delete({
-              where: { id: lesson.id }
+              where: { id: lesson.id },
             });
           }
         }
       }
 
       // Delete sections that are no longer present
-      const sectionsToDelete = existingSections.filter(section => !sectionsToKeep.includes(section.id));
+      const sectionsToDelete = existingSections.filter(
+        section => !sectionsToKeep.includes(section.id),
+      );
 
       for (const section of sectionsToDelete) {
         // Delete all lessons in the section first
-        const sectionLessons = existingLessons.filter(l => l.sectionId === section.id);
+        const sectionLessons = existingLessons.filter(
+          l => l.sectionId === section.id,
+        );
         for (const lesson of sectionLessons) {
           if (lesson.content) {
             await deleteFileFromSpace(lesson.content);
           }
         }
-        
+
         await tx.lesson.deleteMany({
-          where: { sectionId: section.id }
+          where: { sectionId: section.id },
         });
 
         await tx.section.delete({
-          where: { id: section.id }
+          where: { id: section.id },
         });
       }
     }
@@ -463,10 +546,7 @@ const getCourseById = async (courseId: string) => {
   });
 };
 
-
-
 const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
-
   // delete associated files first
   const course = await prisma.course.findFirst({
     where: {
@@ -500,7 +580,7 @@ const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
     await deleteFileFromSpace(course.courseThumbnail);
   }
 
-  // Now delete the course record (this will cascade to sections and lessons if set up in Prisma schema)    
+  // Now delete the course record (this will cascade to sections and lessons if set up in Prisma schema)
 
   const deletedItem = await prisma.course.delete({
     where: {

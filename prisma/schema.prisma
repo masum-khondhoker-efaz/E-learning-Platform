@@ -169,24 +169,32 @@ model Category {
 }
 
 model Course {
-  id                     String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId                 String   @db.ObjectId
+  id                     String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId                 String     @db.ObjectId
   courseTitle            String
   courseShortDescription String
   courseDescription      String
   courseLevel            String
-  categoryId             String   @db.ObjectId
-  certificate            Boolean  @default(false)
-  lifetimeAccess         Boolean  @default(false)
+  categoryId             String     @db.ObjectId
+  certificate            Boolean    @default(false)
+  lifetimeAccess         Boolean    @default(false)
   price                  Float
-  discountPrice          Float    @default(0)
+  discountPrice          Float      @default(0)
   instructorName         String
   instructorImage        String
   instructorDesignation  String
   instructorDescription  String
   courseThumbnail        String
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  avgRating              Float      @default(0)
+  totalRatings           Int        @default(0)
+  totalEnrollments       Int        @default(0)
+  isPublished            Boolean    @default(true)
+  lastUpdated            DateTime   @default(now())
+  difficulty             Difficulty @default(EASY)
+  skillLevel             SkillLevel @default(BEGINNER)
+  courseLength           Int? // in hours
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
 
   // Relationships
   user                User                  @relation(fields: [userId], references: [id])
@@ -200,18 +208,21 @@ model Course {
   CompanyPurchaseItem CompanyPurchaseItem[]
   EmployeeCredential  EmployeeCredential[]
   CartItem            CartItem[]
+  Review              Review[]
 
   @@map("courses")
 }
 
 model Section {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  courseId  String   @db.ObjectId
-  title     String
-  order     Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  Lesson    Lesson[]
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  courseId     String   @db.ObjectId
+  title        String
+  order        Int
+  totalLength  Int? // in minutes
+  totalLessons Int? // number of lessons in this section
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  Lesson       Lesson[]
 
   // Relationships
   course          Course            @relation(fields: [courseId], references: [id])
@@ -228,7 +239,7 @@ model Lesson {
   content       String
   order         Int
   videoDuration Int? // Duration in seconds (if video content)
-  estimatedTime Int? // Estimated time to complete in minutes
+  contentType   String? // e.g., "video", "article", "quiz"
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -361,7 +372,8 @@ model Review {
   updatedAt DateTime @updatedAt
 
   // Relationships
-  user User @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
 
   @@map("reviews")
 }
@@ -668,6 +680,12 @@ enum Difficulty {
   EASY
   MEDIUM
   HARD
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
 }
 
 enum PaymentStatus {
