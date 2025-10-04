@@ -27,6 +27,11 @@ export interface IPaginationResponse<T> {
 
 export interface ISearchAndFilterOptions extends IPaginationOptions {
   searchTerm?: string;
+  status?: string;
+  dateOfBirth?: string;
+  role?: string;
+  fullName?: string;
+  email?: string;
   searchFields?: string[];
   filters?: Record<string, any>;
   courseTitle?: string;
@@ -43,4 +48,8 @@ export interface ISearchAndFilterOptions extends IPaginationOptions {
   instructorName?: string;
   instructorDesignation?: string;
   rating?: number;  
+  // Support specific filters
+  subject?: string;
+  userEmail?: string;
+  userName?: string;
 }

@@ -29,7 +29,11 @@ const createCategoryIntoDb = async (userId: string, data: any) => {
 
 const getCategoryListFromDb = async (userId: string) => {
   
-    const result = await prisma.category.findMany();
+    const result = await prisma.category.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
     if (result.length === 0) {
     return { message: 'No category found' };
   }

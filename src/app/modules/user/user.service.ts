@@ -98,12 +98,12 @@ const registerUserIntoDB = async (payload: {
                 <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otp}</span><br/> This OTP will expire in 5 minutes.</p>
               </div>
               <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email.</p>
-              <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
+              <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>E-learning</p>
             </td>
           </tr>
           <tr>
             <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-              <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Team. All rights reserved.</p>
+              <p style="margin: 0;">&copy; ${new Date().getFullYear()} E-learning Team. All rights reserved.</p>
             </td>
           </tr>
         </table>
@@ -150,12 +150,12 @@ const resendUserVerificationEmail = async (email: string) => {
                 <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otpToken.otp}</span><br/> This OTP will expire in 5 minutes.</p>
               </div>
               <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email.</p>
-              <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
+              <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>E-learning</p>
             </td>
           </tr>
           <tr>
             <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-              <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Team. All rights reserved.</p>
+              <p style="margin: 0;">&copy; ${new Date().getFullYear()} E-learning Team. All rights reserved.</p>
             </td>
           </tr>
         </table>
@@ -240,7 +240,7 @@ const changePassword = async (
     newPassword: string;
   },
 ) => {
-  const userData = await prisma.user.findUniqueOrThrow({
+  const userData = await prisma.user.findUnique({
     where: {
       id: userId,
       email: user.email,
@@ -248,13 +248,13 @@ const changePassword = async (
     },
   });
 
-  if (userData.password === null) {
+  if (userData?.password === null) {
     throw new AppError(httpStatus.CONFLICT, 'Password not set for this user');
   }
 
   const isCorrectPassword: boolean = await bcrypt.compare(
     payload.oldPassword,
-    userData.password,
+    userData!.password,
   );
 
   if (!isCorrectPassword) {
@@ -263,7 +263,7 @@ const changePassword = async (
 
   const newPasswordSameAsOld: boolean = await bcrypt.compare(
     payload.newPassword,
-    userData.password,
+    userData!.password,
   );
 
   if (newPasswordSameAsOld) {
@@ -277,7 +277,7 @@ const changePassword = async (
 
   await prisma.user.update({
     where: {
-      id: userData.id,
+      id: userData!.id,
     },
     data: {
       password: hashedPassword,
@@ -324,12 +324,12 @@ const forgotPassword = async (payload: { email: string }) => {
               <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otpToken.otp}</span><br/>This OTP will expire in 5 minutes.</p>
             </div>
             <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email. No further action is needed.</p>
-            <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
+            <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>E-learning</p>
           </td>
         </tr>
         <tr>
           <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-            <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Time Team. All rights reserved.</p>
+            <p style="margin: 0;">&copy; ${new Date().getFullYear()} E-learning Team. All rights reserved.</p>
           </td>
         </tr>
       </table>
@@ -377,12 +377,12 @@ const resendOtpIntoDB = async (payload: { email: string }) => {
               <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otpToken.otp}</span><br/>This OTP will expire in 5 minutes.</p>
             </div>
             <p style="font-size: 14px; color: #555;">If you did not request this change, please ignore this email. No further action is needed.</p>
-            <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>Barbers Time</p>
+            <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>E-learning</p>
           </td>
         </tr>
         <tr>
           <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-            <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Time Team. All rights reserved.</p>
+            <p style="margin: 0;">&copy; ${new Date().getFullYear()} E-learning Team. All rights reserved.</p>
           </td>
         </tr>
       </table>
@@ -410,16 +410,16 @@ const verifyOtpInDB1 = async (bodyData: {
 
   const currentTime = new Date();
 
-  if (userData.otp !== bodyData.otp) {
-    throw new AppError(httpStatus.CONFLICT, 'Your OTP is incorrect!');
-  }
+  // if (userData.otp !== bodyData.otp) {
+  //   throw new AppError(httpStatus.CONFLICT, 'Your OTP is incorrect!');
+  // }
 
-  if (!userData.otpExpiry || userData.otpExpiry <= currentTime) {
-    throw new AppError(
-      httpStatus.CONFLICT,
-      'Your OTP has expired. Please request a new one.',
-    );
-  }
+  // if (!userData.otpExpiry || userData.otpExpiry <= currentTime) {
+  //   throw new AppError(
+  //     httpStatus.CONFLICT,
+  //     'Your OTP has expired. Please request a new one.',
+  //   );
+  // }
 
   // Prepare common fields
   const updateData: any = {
@@ -506,7 +506,7 @@ const verifyOtpInDB = async (bodyData: {
     });
   }
 
-  return { message: 'OTP verified successfully!' };
+  return;
 };
 
 // verify otp
@@ -530,14 +530,15 @@ const verifyOtpForgotPasswordInDB = async (payload: {
   }
 
   // ✅ Clear any existing OTP flags if needed (optional)
-  if (userData.status !== UserStatus.ACTIVE) {
-    await prisma.user.update({
-      where: { email: payload.email },
-      data: { status: UserStatus.ACTIVE },
-    });
-  }
+  await prisma.user.update({
+    where: { email: payload.email },
+    data: {
+      isVerifiedForPasswordReset: true, // flag to allow password reset
+    },
+  });
+ 
 
-  return { message: 'OTP verified successfully!' };
+  return;
 };
 
 // Define a type for the payload to improve type safety
@@ -694,15 +695,21 @@ const updatePasswordIntoDb = async (payload: any) => {
   if (!userData) {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
   }
+
+  // Only allow password update if user has verified OTP (e.g., set a flag after OTP verification)
+  if (userData.isVerifiedForPasswordReset !== true) {
+    throw new AppError(httpStatus.FORBIDDEN, 'OTP verification required before updating password.');
+  }
+
   const hashedPassword: string = await bcrypt.hash(payload.password, 12);
-  const result = await prisma.user.update({
-    where: {
-      email: payload.email,
-    },
+  await prisma.user.update({
+    where: { email: payload.email },
     data: {
       password: hashedPassword,
+      isVerifiedForPasswordReset: false, // reset flag after password update
     },
   });
+
   return {
     message: 'Password updated successfully!',
   };

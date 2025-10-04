@@ -15,6 +15,10 @@ import { helpAndSupportRoutes } from '../modules/helpAndSupport/helpAndSupport.r
 import { faqRoutes } from '../modules/faq/faq.routes';
 import { studentProgressRoutes } from '../modules/studentProgress/studentProgress.routes';
 import { certificateRoutes } from '../modules/certificate/certificate.routes';
+import { contactUsInfoRoutes } from '../modules/contactUsInfo/contactUsInfo.routes';
+import { adminRoutes } from '../modules/admin/admin.routes';
+import { supportRoutes } from '../modules/support/support.routes';
+import { newsletterSubscriberRoutes } from '../modules/newsletterSubscriber/newsletterSubscriber.routes';
 
 const router = express.Router();
 
@@ -82,6 +86,22 @@ const moduleRoutes = [
   {
     path: '/certificates',
     route: certificateRoutes,
+  },
+  {
+    path: '/contact-us-info',
+    route: contactUsInfoRoutes,
+  },
+  {
+    path: '/admin',
+    route: adminRoutes,
+  },
+  {
+    path: '/support',
+    route: supportRoutes,
+  },
+  {
+    path: '/newsletter-subscriber',
+    route: newsletterSubscriberRoutes,
   },
 ];
 

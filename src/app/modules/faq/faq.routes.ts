@@ -15,9 +15,9 @@ router.post(
   faqController.createFaq,
 );
 
-router.get('/', auth(), faqController.getFaqList);
+router.get('/', faqController.getFaqList);
 
-router.get('/:id', auth(), faqController.getFaqById);
+router.get('/:id', faqController.getFaqById);
 
 router.patch(
   '/:id',

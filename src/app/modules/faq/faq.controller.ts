@@ -2,6 +2,7 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { faqService } from './faq.service';
+import { pickValidFields } from '../../utils/pickValidFields';
 
 const createFaq = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -16,12 +17,24 @@ const createFaq = catchAsync(async (req, res) => {
 
 const getFaqList = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await faqService.getFaqListFromDb();
+  const filters = pickValidFields(req.query, [
+      'page',
+      'limit',
+      'sortBy',
+      'sortOrder',
+      'searchTerm',
+      'status',
+      'question',
+      'answer',
+    ]);
+  
+  const result = await faqService.getFaqListFromDb(filters);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Faq list retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 

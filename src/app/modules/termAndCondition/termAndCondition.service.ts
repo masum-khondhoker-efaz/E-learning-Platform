@@ -25,9 +25,9 @@ const createTermAndConditionIntoDb = async (userId: string, data: any) => {
 
 const getTermAndConditionListFromDb = async () => {
   
-    const result = await prisma.termAndCondition.findMany();
-    if (result.length === 0) {
-    return [];
+    const result = await prisma.termAndCondition.findFirst();
+    if (!result) {
+    return { message: 'Terms And Conditions not found' };
   }
     return result;
 };

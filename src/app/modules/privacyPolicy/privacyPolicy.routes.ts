@@ -15,9 +15,9 @@ router.post(
   privacyPolicyController.createPrivacyPolicy,
 );
 
-router.get('/', auth(), privacyPolicyController.getPrivacyPolicyList);
+router.get('/', privacyPolicyController.getPrivacyPolicyList);
 
-router.get('/:id', auth(), privacyPolicyController.getPrivacyPolicyById);
+router.get('/:id', privacyPolicyController.getPrivacyPolicyById);
 
 router.patch(
   '/:id',

@@ -22,13 +22,14 @@ const auth = (...roles: string[]) => {
         config.jwt.access_secret as Secret,
       );
 
+
       // Check token purpose
       if (!verifyUserToken.purpose || verifyUserToken.purpose !== 'access') {
         throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid token purpose!');
       }
 
       // Check user exists with admin relations
-      const user = await prisma.user.findUniqueOrThrow({
+      const user = await prisma.user.findUnique({
         where: { id: verifyUserToken.id },
       });
 

@@ -14,9 +14,9 @@ router.post(
   aboutUsController.createAboutUs,
 );
 
-router.get('/', auth(), aboutUsController.getAboutUsList);
+router.get('/', aboutUsController.getAboutUsList);
 
-router.get('/:id', auth(), aboutUsController.getAboutUsById);
+router.get('/:id', aboutUsController.getAboutUsById);
 
 router.patch(
   '/:id',

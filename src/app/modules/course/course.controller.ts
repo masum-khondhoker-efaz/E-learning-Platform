@@ -7,16 +7,16 @@ import { deleteFileFromSpace } from '../../utils/deleteImage';
 import { pickValidFields } from '../../utils/pickValidFields';
 import AppError from '../../errors/AppError';
 
+
 const createCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
-
-  const { files, body } = req;
+  const { body } = req;
 
   // Container for uploads
   const uploads: {
     thumbnail?: string;
     instructorImage?: string;
-    lessons: Record<string, string>; // tempKey → uploaded URL
+    lessons: Record<string, { url: string; contentType?: string; videoDuration?: number | null }>;
   } = { lessons: {} };
 
   const allFiles = req.files as Express.Multer.File[];
@@ -24,45 +24,35 @@ const createCourse = catchAsync(async (req, res) => {
   // Find thumbnail
   const thumbnailFile = allFiles.find(f => f.fieldname === 'thumbnail');
   if (thumbnailFile) {
-    const thumbnailUrl = await uploadFileToSpace(
-      thumbnailFile,
-      'courses/thumbnails',
-    );
-    body.courseThumbnail = thumbnailUrl;
+    const { url } = await uploadFileToSpace(thumbnailFile, 'courses/thumbnails');
+    body.courseThumbnail = url;
   }
 
   // Find instructor image
   const instructorFile = allFiles.find(f => f.fieldname === 'instructorImage');
   if (instructorFile) {
-    const instructorImageUrl = await uploadFileToSpace(
-      instructorFile,
-      'courses/instructors',
-    );
-    body.instructorImage = instructorImageUrl;
+    const { url } = await uploadFileToSpace(instructorFile, 'courses/instructors');
+    body.instructorImage = url;
   }
 
   // Lessons (dynamic)
   const lessonFiles = allFiles.filter(f => f.fieldname.startsWith('lesson'));
   for (const file of lessonFiles) {
-    const uploadedUrl = await uploadFileToSpace(file, 'courses/lessons');
-    uploads.lessons[file.fieldname] = uploadedUrl;
+    const { url, contentType, videoDuration } = await uploadFileToSpace(file, 'courses/lessons');
+    uploads.lessons[file.fieldname] = { url, contentType, videoDuration };
   }
-
-  // Upload lessons dynamically (lesson1, lesson2, etc.)
-  // (This block is redundant and can be removed since lesson files are already handled above)
-
-  // Merge uploads into body
-  if (uploads.thumbnail) body.courseThumbnail = uploads.thumbnail;
-  if (uploads.instructorImage) body.instructorImage = uploads.instructorImage;
 
   // Map lessons back into sections
   if (body.sections && Array.isArray(body.sections)) {
-    body.sections.forEach((section: any, sIndex: number) => {
+    body.sections.forEach((section: any) => {
       if (section.lessons && Array.isArray(section.lessons)) {
         section.lessons.forEach((lesson: any) => {
           if (lesson.tempKey && uploads.lessons[lesson.tempKey]) {
-            lesson.content = uploads.lessons[lesson.tempKey];
-            delete lesson.tempKey; // cleanup
+            const uploaded = uploads.lessons[lesson.tempKey];
+            lesson.content = uploaded.url;
+            lesson.videoDuration = uploaded.videoDuration ?? null;
+            lesson.contentType = uploaded.contentType ?? null;
+            delete lesson.tempKey;
           }
         });
       }
@@ -79,6 +69,8 @@ const createCourse = catchAsync(async (req, res) => {
     data: result,
   });
 });
+
+
 
 const getCourseList = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -127,11 +119,12 @@ const getCourseById = catchAsync(async (req, res) => {
   });
 });
 
+
 const updateCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
   const { id } = req.params;
-  
-  // Get the parsed JSON data from bodyData
+
+  // Parse JSON bodyData safely
   let bodyData;
   try {
     bodyData = req.body.bodyData ? JSON.parse(req.body.bodyData) : req.body;
@@ -139,14 +132,14 @@ const updateCourse = catchAsync(async (req, res) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'Invalid JSON format in bodyData');
   }
 
-  // Get files from req.files (processed by multer)
+  // Get files from req.files
   const allFiles = req.files as Express.Multer.File[];
 
   // Container for uploads
   const uploads: {
     thumbnail?: string;
     instructorImage?: string;
-    lessons: Record<string, string>;
+    lessons: Record<string, { url: string; contentType?: string; videoDuration?: number | null }>;
   } = { lessons: {} };
 
   // Get existing course
@@ -161,8 +154,8 @@ const updateCourse = catchAsync(async (req, res) => {
     if (existingCourse.courseThumbnail) {
       await deleteFileFromSpace(existingCourse.courseThumbnail);
     }
-    const thumbnailUrl = await uploadFileToSpace(thumbnailFile, 'courses/thumbnails');
-    bodyData.courseThumbnail = thumbnailUrl;
+    const { url } = await uploadFileToSpace(thumbnailFile, 'courses/thumbnails');
+    bodyData.courseThumbnail = url;
   }
 
   // Handle instructor image
@@ -171,40 +164,33 @@ const updateCourse = catchAsync(async (req, res) => {
     if (existingCourse.instructorImage) {
       await deleteFileFromSpace(existingCourse.instructorImage);
     }
-    const instructorImageUrl = await uploadFileToSpace(instructorFile, 'courses/instructors');
-    bodyData.instructorImage = instructorImageUrl;
+    const { url } = await uploadFileToSpace(instructorFile, 'courses/instructors');
+    bodyData.instructorImage = url;
   }
 
   // Handle lesson files
   const lessonFiles = allFiles.filter(f => f.fieldname.startsWith('lesson'));
-  console.log('Lesson files found:', lessonFiles.map(f => ({ fieldname: f.fieldname, originalname: f.originalname })));
-
   for (const file of lessonFiles) {
-    const uploadedUrl = await uploadFileToSpace(file, 'courses/lessons');
-    console.log(`Uploaded ${file.fieldname} to: ${uploadedUrl}`);
-    uploads.lessons[file.fieldname] = uploadedUrl;
+    const { url, contentType, videoDuration } = await uploadFileToSpace(file, 'courses/lessons');
+    uploads.lessons[file.fieldname] = { url, contentType, videoDuration };
   }
-
-  console.log('Uploads mapping:', uploads.lessons);
 
   // Map lessons back into sections
   if (bodyData.sections && Array.isArray(bodyData.sections)) {
     bodyData.sections.forEach((section: any) => {
       if (section.lessons && Array.isArray(section.lessons)) {
         section.lessons.forEach((lesson: any) => {
-          console.log(`Processing lesson: ${lesson.title}, tempKey: ${lesson.tempKey}`);
           if (lesson.tempKey && uploads.lessons[lesson.tempKey]) {
-            console.log(`Setting content for ${lesson.tempKey}`);
-            lesson.content = uploads.lessons[lesson.tempKey];
+            const uploaded = uploads.lessons[lesson.tempKey];
+            lesson.content = uploaded.url;
+            lesson.videoDuration = uploaded.videoDuration ?? null;
+            lesson.contentType = uploaded.contentType ?? null;
             delete lesson.tempKey;
           }
         });
       }
     });
   }
-
-  // Debug final body
-  console.log('Final body before service:', JSON.stringify(bodyData, null, 2));
 
   // Update course
   const result = await courseService.updateCourseIntoDb(id, user.id, bodyData);
@@ -216,6 +202,8 @@ const updateCourse = catchAsync(async (req, res) => {
     data: result,
   });
 });
+
+
 
 const deleteCourse = catchAsync(async (req, res) => {
   const user = req.user as any;

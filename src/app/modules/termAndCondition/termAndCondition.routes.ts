@@ -14,9 +14,9 @@ router.post(
   termAndConditionController.createTermAndCondition,
 );
 
-router.get('/', auth(), termAndConditionController.getTermAndConditionList);
+router.get('/', termAndConditionController.getTermAndConditionList);
 
-router.get('/:id', auth(), termAndConditionController.getTermAndConditionById);
+router.get('/:id', termAndConditionController.getTermAndConditionById);
 
 router.patch(
   '/:id',

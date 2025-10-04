@@ -10,6 +10,7 @@ const superAdminData = {
   role: UserRoleEnum.SUPER_ADMIN,
   status: UserStatus.ACTIVE,
   isProfileComplete: true,
+  isVerified: true,
 };
 
 const seedSuperAdmin = async () => {
@@ -34,6 +35,7 @@ const seedSuperAdmin = async () => {
         data: {
           userId: superAdmin.id,
           isSuperAdmin: true, // Set isSuperAdmin to true
+          systemOwner: true, // Set systemOwner to true
         },
       });
       // Optionally, you can log the created super admin and admin

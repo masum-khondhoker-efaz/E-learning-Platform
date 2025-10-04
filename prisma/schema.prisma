@@ -8,28 +8,27 @@ datasource db {
 }
 
 model User {
-  id                String        @id @default(auto()) @map("_id") @db.ObjectId
-  fullName          String
-  email             String        @unique
-  password          String?
-  role              UserRoleEnum  @default(STUDENT)
-  status            UserStatus    @default(PENDING)
-  isVerified        Boolean       @default(false)
-  isProfileComplete Boolean       @default(false)
-  address           String?
-  isLoggedIn        Boolean       @default(false)
-  image             String?
-  phoneNumber       String?
-  dateOfBirth       String?
-  gender            String?
-  otp               Int?
-  otpExpiry         DateTime?
-  plateForm         PlatFormType?
-  fcmToken          String?
-  fcmTokenEx        String?
-  stripeCustomerId  String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  id                         String        @id @default(auto()) @map("_id") @db.ObjectId
+  fullName                   String
+  email                      String        @unique
+  password                   String?
+  role                       UserRoleEnum  @default(STUDENT)
+  status                     UserStatus    @default(PENDING)
+  isVerified                 Boolean       @default(false)
+  isProfileComplete          Boolean       @default(false)
+  address                    String?
+  isLoggedIn                 Boolean       @default(false)
+  image                      String?
+  phoneNumber                String?
+  dateOfBirth                String?
+  gender                     String?
+  plateForm                  PlatFormType?
+  fcmToken                   String?
+  fcmTokenEx                 String?
+  stripeCustomerId           String?
+  isVerifiedForPasswordReset Boolean       @default(false)
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
 
   // Relationships
   Review             Review[]
@@ -49,11 +48,12 @@ model User {
   StudentProgress    StudentProgress[]
   AboutUs            AboutUs[]
   HelpAndSupport     HelpAndSupport[]
-  Support            Support[]
   Reply              Reply[]
   EmployeeCredential EmployeeCredential[]
   Cart               Cart[]
   Checkout           Checkout[]
+  ContactUsInfo      ContactUsInfo[]
+  FavoriteCourse     FavoriteCourse[]
 
   @@map("users")
 }
@@ -185,10 +185,13 @@ model Course {
   instructorDesignation  String
   instructorDescription  String
   courseThumbnail        String
+  totalLessons           Int        @default(0)
+  totalSections          Int        @default(0)
+  totalDuration          Float      @default(0) // in hours
   avgRating              Float      @default(0)
   totalRatings           Int        @default(0)
   totalEnrollments       Int        @default(0)
-  isPublished            Boolean    @default(true)
+  isPublished            Boolean    @default(false)
   lastUpdated            DateTime   @default(now())
   difficulty             Difficulty @default(EASY)
   skillLevel             SkillLevel @default(BEGINNER)
@@ -209,6 +212,7 @@ model Course {
   EmployeeCredential  EmployeeCredential[]
   CartItem            CartItem[]
   Review              Review[]
+  FavoriteCourse      FavoriteCourse[]
 
   @@map("courses")
 }
@@ -218,7 +222,7 @@ model Section {
   courseId     String   @db.ObjectId
   title        String
   order        Int
-  totalLength  Int? // in minutes
+  totalLength  Float? // in hours
   totalLessons Int? // number of lessons in this section
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -239,7 +243,7 @@ model Lesson {
   content       String
   order         Int
   videoDuration Int? // Duration in seconds (if video content)
-  contentType   String? // e.g., "video", "article", "quiz"
+  contentType   String? // e.g., "video", "article"
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -420,6 +424,21 @@ model TermAndCondition {
   @@map("terms_and_conditions")
 }
 
+model ContactUsInfo {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
+  location    String
+  email       String
+  phoneNumber String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("contact_us_info")
+}
+
 model Test {
   id           String     @id @default(auto()) @map("_id") @db.ObjectId
   userId       String     @db.ObjectId
@@ -568,7 +587,6 @@ model Certificate {
 
 model Support {
   id        String        @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String        @db.ObjectId
   userEmail String
   userPhone String?
   message   String
@@ -577,7 +595,6 @@ model Support {
   updatedAt DateTime      @updatedAt
 
   // Relationships
-  user User @relation(fields: [userId], references: [id])
 
   Reply Reply[]
 
@@ -589,7 +606,7 @@ model Reply {
   userId    String      @db.ObjectId
   supportId String?     @db.ObjectId
   message   String
-  status    ReplyStatus @default(PENDING)
+  status    ReplyStatus @default(CLOSED)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
@@ -648,6 +665,29 @@ model Checkout {
   company Company? @relation(fields: [companyId], references: [id])
 
   @@map("checkouts")
+}
+
+model NewsletterSubscriber {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("newsletter_subscribers")
+}
+
+model FavoriteCourse {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  courseId  String   @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@map("favorite_courses")
 }
 
 enum CheckoutStatus {

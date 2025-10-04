@@ -15,8 +15,8 @@ const createAboutUs = catchAsync(async (req, res) => {
 });
 
 const getAboutUsList = catchAsync(async (req, res) => {
-  const user = req.user as any;
-  const result = await aboutUsService.getAboutUsListFromDb(user.id);
+  // const user = req.user as any;
+  const result = await aboutUsService.getAboutUsListFromDb();
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

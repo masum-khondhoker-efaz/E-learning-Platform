@@ -15,8 +15,8 @@ const createHelpAndSupport = catchAsync(async (req, res) => {
 });
 
 const getHelpAndSupportList = catchAsync(async (req, res) => {
-  const user = req.user as any;
-  const result = await helpAndSupportService.getHelpAndSupportListFromDb(user.id);
+  // const user = req.user as any;
+  const result = await helpAndSupportService.getHelpAndSupportListFromDb();
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

@@ -82,11 +82,66 @@ const createCourseIntoDb = async (userId: string, data: any) => {
                 title: lesson.title,
                 content: lesson.content, // already mapped to uploaded file URL
                 order: lesson.order ?? lIndex + 1,
+                videoDuration: lesson.videoDuration ?? null, // ✅ new
+                contentType: lesson.contentType ?? null, // ✅ new
               },
             });
           }
         }
       }
+    }
+
+    const totalSections = await tx.section.count({
+      where: { courseId: course.id },
+    });
+    const totalLessons = await tx.lesson.count({
+      where: { section: { courseId: course.id } },
+    });
+
+    // Calculate total duration in hours
+    // Make sure 'duration' exists in your Lesson model as a numeric field
+    const lessonAggregate = await tx.lesson.aggregate({
+      where: { section: { courseId: course.id } },
+      _sum: { videoDuration: true },
+    });
+    const totalDurationInMinutes = lessonAggregate?._sum?.videoDuration ?? 0;
+    const totalDurationInHours = totalDurationInMinutes / 60;
+
+    // Step 4: Update course with totalSections, totalLessons, totalDuration
+    await tx.course.update({
+      where: { id: course.id },
+      data: {
+        totalSections,
+        totalLessons,
+        totalDuration: totalDurationInHours,
+      },
+    });
+
+    // total lessons and total duration of sections also need to be updated in Section model
+    const sections = await tx.section.findMany({
+      where: { courseId: course.id },
+    });
+
+    for (const section of sections) {
+      const sectionLessonCount = await tx.lesson.count({
+        where: { sectionId: section.id },
+      });
+
+      const sectionLessonAggregate = await tx.lesson.aggregate({
+        where: { sectionId: section.id },
+        _sum: { videoDuration: true },
+      });
+      const sectionTotalDurationInMinutes =
+        sectionLessonAggregate?._sum?.videoDuration ?? 0;
+      const sectionTotalDurationInHours = sectionTotalDurationInMinutes / 60;
+
+      await tx.section.update({
+        where: { id: section.id },
+        data: {
+          totalLessons: sectionLessonCount,
+          totalLength: sectionTotalDurationInHours,
+        },
+      });
     }
 
     // Return full course with nested sections + lessons
@@ -269,26 +324,20 @@ const getCourseByIdFromDb = async (userId: string, courseId: string) => {
   return formattedResult;
 };
 
+
 const updateCourseIntoDb = async (
   courseId: string,
   userId: string,
   data: any,
 ) => {
   return await prisma.$transaction(async tx => {
-    // Check if course exists and belongs to user
+    // 1. Check if course exists and belongs to user
     const existingCourse = await tx.course.findFirst({
-      where: {
-        id: courseId,
-        userId: userId,
-      },
+      where: { id: courseId, userId },
       include: {
         Section: {
-          include: {
-            Lesson: true,
-          },
-          orderBy: {
-            order: 'asc',
-          },
+          include: { Lesson: true },
+          orderBy: { order: 'asc' },
         },
       },
     });
@@ -297,7 +346,7 @@ const updateCourseIntoDb = async (
       throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
     }
 
-    // Check for duplicate course title/description (excluding current course)
+    // 2. Check duplicate course title/description
     const duplicateCourse = await tx.course.findFirst({
       where: {
         id: { not: courseId },
@@ -316,26 +365,20 @@ const updateCourseIntoDb = async (
       );
     }
 
-    // Step 1: Update course basic info
+    // 3. Update basic course info
     const updatedCourse = await tx.course.update({
       where: { id: courseId },
       data: {
-        ...(data.courseTitle !== undefined && {
-          courseTitle: data.courseTitle,
-        }),
+        ...(data.courseTitle !== undefined && { courseTitle: data.courseTitle }),
         ...(data.courseShortDescription !== undefined && {
           courseShortDescription: data.courseShortDescription,
         }),
         ...(data.courseDescription !== undefined && {
           courseDescription: data.courseDescription,
         }),
-        ...(data.courseLevel !== undefined && {
-          courseLevel: data.courseLevel,
-        }),
+        ...(data.courseLevel !== undefined && { courseLevel: data.courseLevel }),
         ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
-        ...(data.certificate !== undefined && {
-          certificate: data.certificate,
-        }),
+        ...(data.certificate !== undefined && { certificate: data.certificate }),
         ...(data.lifetimeAccess !== undefined && {
           lifetimeAccess: data.lifetimeAccess,
         }),
@@ -358,22 +401,25 @@ const updateCourseIntoDb = async (
         ...(data.courseThumbnail !== undefined && {
           courseThumbnail: data.courseThumbnail,
         }),
+        lastUpdated: new Date(),
       },
     });
 
-    // Step 2: Handle sections and lessons
+    // 4. Handle sections & lessons
+    let totalLessons = 0;
+    let totalDurationSeconds = 0;
+    let totalSections = 0;
+
     if (data.sections && Array.isArray(data.sections)) {
       const existingSections = existingCourse.Section;
-      const existingLessons = existingSections.flatMap(
-        section => section.Lesson,
-      );
+      const existingLessons = existingSections.flatMap(s => s.Lesson);
 
-      // First, update all existing sections to temporary orders to avoid constraint violations
+      // Temp reorder to avoid constraint errors
       await Promise.all(
         existingSections.map((section, index) =>
           tx.section.update({
             where: { id: section.id },
-            data: { order: 10000 + index }, // Temporary high order values
+            data: { order: 10000 + index },
           }),
         ),
       );
@@ -381,27 +427,20 @@ const updateCourseIntoDb = async (
       const sectionsToKeep: string[] = [];
       const lessonsToKeep: string[] = [];
 
-      // Process each section from the update data
       for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
         const sectionData = data.sections[sIndex];
         let sectionId = sectionData.id;
 
-        // Update existing section or create new one
         if (sectionId) {
-          // Update existing section
           await tx.section.update({
             where: { id: sectionId },
-            data: {
-              title: sectionData.title,
-              order: sIndex + 1,
-            },
+            data: { title: sectionData.title, order: sIndex + 1 },
           });
           sectionsToKeep.push(sectionId);
         } else {
-          // Create new section
           const newSection = await tx.section.create({
             data: {
-              courseId: courseId,
+              courseId,
               title: sectionData.title,
               order: sIndex + 1,
             },
@@ -410,12 +449,12 @@ const updateCourseIntoDb = async (
           sectionsToKeep.push(sectionId);
         }
 
-        // Process lessons for this section
+        totalSections++;
+
+        // Lessons in section
         if (sectionData.lessons && Array.isArray(sectionData.lessons)) {
-          // First, update all existing lessons in this section to temporary orders
-          const sectionLessons = existingLessons.filter(
-            l => l.sectionId === sectionId,
-          );
+          const sectionLessons = existingLessons.filter(l => l.sectionId === sectionId);
+
           await Promise.all(
             sectionLessons.map((lesson, index) =>
               tx.lesson.update({
@@ -430,15 +469,9 @@ const updateCourseIntoDb = async (
             let lessonId = lessonData.id;
 
             if (lessonId) {
-              // Update existing lesson - check if content changed and delete old file
-              const existingLesson = existingLessons.find(
-                l => l.id === lessonId,
-              );
-              if (
-                existingLesson &&
-                lessonData.content !== existingLesson.content
-              ) {
-                // Content changed, delete old file
+              const existingLesson = existingLessons.find(l => l.id === lessonId);
+
+              if (existingLesson && lessonData.content !== existingLesson.content) {
                 await deleteFileFromSpace(existingLesson.content);
               }
 
@@ -448,86 +481,79 @@ const updateCourseIntoDb = async (
                   title: lessonData.title,
                   content: lessonData.content,
                   order: lIndex + 1,
+                  videoDuration: lessonData.duration || existingLesson?.videoDuration || 0,
                 },
               });
               lessonsToKeep.push(lessonId);
+              totalLessons++;
+              totalDurationSeconds += lessonData.duration || 0;
             } else {
-              // Create new lesson
-              await tx.lesson.create({
+              const newLesson = await tx.lesson.create({
                 data: {
-                  sectionId: sectionId,
+                  sectionId,
                   title: lessonData.title,
                   content: lessonData.content,
                   order: lIndex + 1,
+                  videoDuration: lessonData.videoDuration || 0,
                 },
               });
+              lessonsToKeep.push(newLesson.id);
+              totalLessons++;
+              totalDurationSeconds += lessonData.duration || 0;
             }
           }
 
-          // Delete lessons that were removed from this section
-          const lessonsToDelete = existingLessons.filter(
-            lesson =>
-              lesson.sectionId === sectionId &&
-              !lessonsToKeep.includes(lesson.id),
+          // Delete removed lessons
+          const lessonsToDelete = sectionLessons.filter(
+            l => !lessonsToKeep.includes(l.id),
           );
-
           for (const lesson of lessonsToDelete) {
-            if (lesson.content) {
-              await deleteFileFromSpace(lesson.content);
-            }
-            await tx.lesson.delete({
-              where: { id: lesson.id },
-            });
+            if (lesson.content) await deleteFileFromSpace(lesson.content);
+            await tx.lesson.delete({ where: { id: lesson.id } });
           }
         }
       }
 
-      // Delete sections that are no longer present
+      // Delete removed sections
       const sectionsToDelete = existingSections.filter(
-        section => !sectionsToKeep.includes(section.id),
+        s => !sectionsToKeep.includes(s.id),
       );
-
       for (const section of sectionsToDelete) {
-        // Delete all lessons in the section first
-        const sectionLessons = existingLessons.filter(
-          l => l.sectionId === section.id,
-        );
+        const sectionLessons = existingLessons.filter(l => l.sectionId === section.id);
         for (const lesson of sectionLessons) {
-          if (lesson.content) {
-            await deleteFileFromSpace(lesson.content);
-          }
+          if (lesson.content) await deleteFileFromSpace(lesson.content);
         }
-
-        await tx.lesson.deleteMany({
-          where: { sectionId: section.id },
-        });
-
-        await tx.section.delete({
-          where: { id: section.id },
-        });
+        await tx.lesson.deleteMany({ where: { sectionId: section.id } });
+        await tx.section.delete({ where: { id: section.id } });
       }
     }
 
-    // Return the updated course with all relations
+    // 5. Update aggregate stats
+    await tx.course.update({
+      where: { id: courseId },
+      data: {
+        totalSections,
+        totalLessons,
+        totalDuration: totalDurationSeconds / 3600, // store in hours
+      },
+    });
+
+    // 6. Return updated course
     return await tx.course.findUnique({
       where: { id: courseId },
       include: {
         Section: {
-          include: {
-            Lesson: {
-              orderBy: {
-                order: 'asc',
-              },
-            },
-          },
-          orderBy: {
-            order: 'asc',
-          },
+          include: { Lesson: true },
+          orderBy: { order: 'asc' },
         },
       },
     });
   });
 };
+
+
+
+
 
 // Helper function to get course by ID
 const getCourseById = async (courseId: string) => {

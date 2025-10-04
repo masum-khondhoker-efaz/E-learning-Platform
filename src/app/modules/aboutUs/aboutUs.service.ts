@@ -22,9 +22,9 @@ const createAboutUsIntoDb = async (userId: string, data: any) => {
   return result;
 };
 
-const getAboutUsListFromDb = async (userId: string) => {
-  const result = await prisma.aboutUs.findMany();
-  if (result.length === 0) {
+const getAboutUsListFromDb = async () => {
+  const result = await prisma.aboutUs.findFirst();
+  if (!result) {
     return { message: 'No aboutUs found' };
   }
   return result;

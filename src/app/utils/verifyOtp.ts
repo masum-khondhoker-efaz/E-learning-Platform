@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
 import config from '../../config';
+import AppError from '../errors/AppError';
+import httpStatus from 'http-status';
 const verifyOtp = (email: string, otp: number, token: string) => {
   try {
     const secret = config.jwt.otp_secret!;
@@ -7,17 +9,17 @@ const verifyOtp = (email: string, otp: number, token: string) => {
     console.log('Decoded OTP:', decoded.otp, 'Provided OTP:', otp);
 
     if (decoded.email !== email) {
-      throw new Error('Email mismatch');
+      throw new AppError(httpStatus.BAD_REQUEST, 'Email mismatch');
     }
 
 
     if (decoded.otp !== Number(otp)) {
-      throw new Error('Invalid OTP');
+      throw new AppError(httpStatus.BAD_REQUEST, 'Invalid OTP');
     }
 
     return true; // OTP valid
   } catch (err) {
-    throw new Error('OTP expired or invalid');
+    throw new AppError(httpStatus.BAD_REQUEST, 'Invalid or expired OTP');
   }
 };
 export default verifyOtp;

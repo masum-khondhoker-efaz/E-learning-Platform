@@ -5,7 +5,7 @@ import {
 } from '@prisma/client/runtime/library';
 import { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
-import { TokenExpiredError } from 'jsonwebtoken';
+import { TokenExpiredError, JsonWebTokenError } from 'jsonwebtoken';
 import AppError from '../errors/AppError';
 import handleZodError from '../errors/handleZodError';
 
@@ -72,6 +72,14 @@ const globalErrorHandler = (
     errorDetails = {
       name: err.name,
       expiredAt: err.expiredAt,
+      stack: err.stack,
+    };
+  } else if (err instanceof JsonWebTokenError) {
+    // Handle JWT token verification errors (including invalid signature)
+    statusCode = 401;
+    message = err.message;
+    errorDetails = {
+      name: err.name,
       stack: err.stack,
     };
   } else if (err instanceof AppError) {

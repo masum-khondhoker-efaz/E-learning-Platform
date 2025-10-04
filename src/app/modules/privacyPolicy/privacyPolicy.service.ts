@@ -28,9 +28,9 @@ const createPrivacyPolicyIntoDb = async (userId: string, data: {
 
 const getPrivacyPolicyListFromDb = async () => {
   
-    const result = await prisma.privacyPolicy.findMany();
-    if (result.length === 0) {
-    return []
+    const result = await prisma.privacyPolicy.findFirst();
+    if (!result) {
+    return { message: 'Privacy & Policy is not found' };
   }
     return result;
 };

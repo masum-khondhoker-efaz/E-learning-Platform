@@ -13,9 +13,9 @@ router.post(
   helpAndSupportController.createHelpAndSupport,
 );
 
-router.get('/', auth(), helpAndSupportController.getHelpAndSupportList);
+router.get('/', helpAndSupportController.getHelpAndSupportList);
 
-router.get('/:id', auth(), helpAndSupportController.getHelpAndSupportById);
+router.get('/:id', helpAndSupportController.getHelpAndSupportById);
 
 router.patch(
   '/:id',
