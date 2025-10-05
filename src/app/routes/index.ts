@@ -19,6 +19,10 @@ import { contactUsInfoRoutes } from '../modules/contactUsInfo/contactUsInfo.rout
 import { adminRoutes } from '../modules/admin/admin.routes';
 import { supportRoutes } from '../modules/support/support.routes';
 import { newsletterSubscriberRoutes } from '../modules/newsletterSubscriber/newsletterSubscriber.routes';
+import { favoriteCourseRoutes } from '../modules/favoriteCourse/favoriteCourse.routes';
+import { inPersonTrainingRoutes } from '../modules/inPersonTraining/inPersonTraining.routes';
+import { cartRoutes } from '../modules/cart/cart.routes';
+import { checkoutRoutes } from '../modules/checkout/checkout.routes';
 
 const router = express.Router();
 
@@ -102,6 +106,22 @@ const moduleRoutes = [
   {
     path: '/newsletter-subscriber',
     route: newsletterSubscriberRoutes,
+  },
+  {
+    path: '/favorite-courses',
+    route: favoriteCourseRoutes,
+  },
+  {
+    path: '/in-person-trainings',
+    route: inPersonTrainingRoutes,
+  },
+  {
+    path: '/carts',
+    route: cartRoutes,
+  },
+  {
+    path: '/checkouts',
+    route: checkoutRoutes,
   },
 ];
 

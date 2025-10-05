@@ -1,3 +1,4 @@
+import { UserRoleEnum } from '@prisma/client';
 import express from 'express';
 import auth from '../../middlewares/auth';
 import validateRequest from '../../middlewares/validateRequest';
@@ -8,22 +9,22 @@ const router = express.Router();
 
 router.post(
   '/',
-  auth(),
+  auth(UserRoleEnum.STUDENT),
   validateRequest(cartValidation.createSchema),
   cartController.createCart,
 );
 
-router.get('/', auth(), cartController.getCartList);
+router.get('/', auth(UserRoleEnum.STUDENT), cartController.getCartList);
 
-router.get('/:id', auth(), cartController.getCartById);
+router.get('/:id', auth(UserRoleEnum.STUDENT), cartController.getCartById);
 
 router.put(
   '/:id',
-  auth(),
+  auth(UserRoleEnum.STUDENT),
   validateRequest(cartValidation.updateSchema),
   cartController.updateCart,
 );
 
-router.delete('/:id', auth(), cartController.deleteCart);
+router.delete('/:id', auth(UserRoleEnum.STUDENT), cartController.deleteCart);
 
 export const cartRoutes = router;

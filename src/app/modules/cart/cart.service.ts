@@ -17,37 +17,57 @@ import httpStatus from 'http-status';
 //     return result;
 // };
 
-const getOrCreateCart = async (userId?: string, companyId?: string) => {
-  if (!userId && !companyId) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      'Either userId or companyId is required',
-    );
+const getOrCreateCart = async (userId: string) => {
+  if (!userId) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'userId is required');
   }
 
-  const whereCondition = userId ? { userId } : { companyId };
-
   let cart = await prisma.cart.findFirst({
-    where: whereCondition,
-    include: { items: { include: { course: true } } },
+    where: { userId },
+    include: {
+      items: {
+        include: {
+          course: {
+            select: {
+              id: true,
+              courseTitle: true,
+              courseShortDescription: true,
+              price: true,
+              discountPrice: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!cart) {
     cart = await prisma.cart.create({
-      data: whereCondition,
-      include: { items: { include: { course: true } } },
+      data: { userId },
+      include: {
+        items: {
+          include: {
+            course: {
+              select: {
+                id: true,
+                courseTitle: true,
+                courseShortDescription: true,
+                price: true,
+                discountPrice: true,
+              },
+            },
+          },
+        },
+      },
     });
   }
 
   return cart;
 };
 
-const createCartIntoDb = async (
-  data: { courseId: string },
-  userId?: string,
-  companyId?: string,
-) => {
-  const cart = await getOrCreateCart(userId, companyId);
+const createCartIntoDb = async (userId: string, data: { courseId: string }) => {
+  // always get or create cart for this user
+  const cart = await getOrCreateCart(userId);
 
   // check if course already in cart
   const existingItem = await prisma.cartItem.findFirst({
@@ -69,7 +89,7 @@ const createCartIntoDb = async (
   });
 
   // return updated cart
-  return await getOrCreateCart(userId, companyId);
+  return await getOrCreateCart(userId);
 };
 
 // const getCartListFromDb1 = async (userId: string) => {
@@ -81,10 +101,24 @@ const createCartIntoDb = async (
 //     return result;
 // };
 
-const getCartListFromDb = async (cartId: string) => {
-  const cart = await prisma.cart.findUnique({
-    where: { id: cartId },
-    include: { items: { include: { course: true } } },
+const getCartListFromDb = async (userId: string) => {
+  const cart = await prisma.cart.findFirst({
+    where: { userId: userId },
+    include: {
+      items: {
+        include: {
+          course: {
+            select: {
+              id: true,
+              courseTitle: true,
+              courseShortDescription: true,
+              price: true,
+              discountPrice: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!cart) {
@@ -94,16 +128,38 @@ const getCartListFromDb = async (cartId: string) => {
   return cart.items;
 };
 
-const getCartByIdFromDb = async (userId: string, cartId: string) => {
+const getCartByIdFromDb = async (userId: string, cartItemId: string) => {
   const result = await prisma.cart.findUnique({
     where: {
-      id: cartId,
+      userId: userId,
     },
   });
   if (!result) {
     throw new AppError(httpStatus.NOT_FOUND, 'cart not found');
   }
-  return result;
+
+  const cartItem = await prisma.cartItem.findUnique({
+    where: {
+      id: cartItemId,
+      cartId: result.id,
+    },
+    include: {
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          courseShortDescription: true,
+          price: true,
+          discountPrice: true,
+        },
+      },
+    },
+  });
+  if (!cartItem) {
+    throw new AppError(httpStatus.NOT_FOUND, 'No items in cart');
+  }
+
+  return cartItem;
 };
 
 const updateCartIntoDb = async (userId: string, cartId: string, data: any) => {
@@ -136,10 +192,21 @@ const updateCartIntoDb = async (userId: string, cartId: string, data: any) => {
 //     return deletedItem;
 // };
 
-const deleteCartItemFromDb = async (cartId: string, courseId: string) => {
+const deleteCartItemFromDb = async (
+  userId: string,
+  courseId: string,
+) => {
+  const cart = await prisma.cart.findUnique({
+    where: { userId:  userId },
+  });
+
+  if (!cart) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Cart not found');
+  }
+
   const existing = await prisma.cartItem.findUnique({
     where: {
-      cartId_courseId: { cartId, courseId },
+      cartId_courseId: { cartId: cart.id, courseId },
     },
   });
 
@@ -148,19 +215,17 @@ const deleteCartItemFromDb = async (cartId: string, courseId: string) => {
   }
 
   await prisma.cartItem.delete({
-    where: { cartId_courseId: { cartId, courseId } },
+    where: { cartId_courseId: { cartId: cart.id, courseId } },
   });
 
   return { message: 'Course removed from cart' };
 };
 
-
 // Get the current cart
-const getCart = async (userId?: string, companyId?: string) => {
-  const cart = await getOrCreateCart(userId, companyId);
-  return cart;
-};
-
+// const getCart = async (userId?: string, companyId?: string) => {
+//   const cart = await getOrCreateCart(userId);
+//   return cart;
+// };
 
 export const cartService = {
   createCartIntoDb,
@@ -168,5 +233,5 @@ export const cartService = {
   getCartByIdFromDb,
   updateCartIntoDb,
   deleteCartItemFromDb,
-  getCart,
+  // getCart,
 };

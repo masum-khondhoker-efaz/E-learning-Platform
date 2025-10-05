@@ -73,6 +73,12 @@ const registerUserIntoDB = async (payload: {
     if (!company) {
       throw new AppError(httpStatus.BAD_REQUEST, 'Company not created!');
     }
+
+    //update user role to company
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { role: UserRoleEnum.COMPANY },
+    });
   }
 
 

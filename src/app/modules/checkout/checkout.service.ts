@@ -6,33 +6,13 @@ import * as bcrypt from 'bcrypt';
 import { send } from 'process';
 import emailSender from '../../utils/emailSender';
 
-// const createCheckoutIntoDb1 = async (userId: string, data: any) => {
-
-//     const result = await prisma.checkout.create({
-//     data: {
-//       ...data,
-//       userId: userId,
-//     },
-//   });
-//   if (!result) {
-//     throw new AppError(httpStatus.BAD_REQUEST, 'checkout not created');
-//   }
-//     return result;
-// };
-
-// Create checkout from cart
-
-const createCheckoutIntoDb = async (userId?: string, companyId?: string) => {
-  if (!userId && !companyId) {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      'Either userId or companyId is required',
-    );
-  }
-
-  // 1. Get the cart
-  const cart = await prisma.cart.findFirst({
-    where: { userId, companyId },
+const createCheckoutIntoDbForStudent = async (
+  userId: string,
+  data: { all?: boolean; courseIds?: string[] },
+) => {
+  // 1. Get the user's cart and items
+  const cart = await prisma.cart.findUnique({
+    where: { userId },
     include: { items: { include: { course: true } } },
   });
 
@@ -40,31 +20,197 @@ const createCheckoutIntoDb = async (userId?: string, companyId?: string) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'Cart is empty');
   }
 
-  // 2. Calculate total
-  const totalAmount = cart.items.reduce(
+  // 2. Decide which items to checkout
+  let selectedItems;
+  if (data.all) {
+    selectedItems = cart.items;
+  } else if (data.courseIds && data.courseIds.length > 0) {
+    selectedItems = cart.items.filter(item =>
+      data.courseIds?.includes(item.courseId),
+    );
+  } else {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'Provide either all=true or specific courseIds',
+    );
+  }
+
+  if (selectedItems.length === 0) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items selected');
+  }
+
+  // 3. Calculate total
+  const totalAmount = selectedItems.reduce(
     (sum, item) => sum + (item.course.price || 0),
     0,
   );
 
-  // 3. Create checkout
+  // 4. Create checkout record
   const checkout = await prisma.checkout.create({
     data: {
-      cartId: cart.id,
       userId,
-      companyId,
       totalAmount,
-      status: CheckoutStatus.PENDING,
-    },
-    include: {
-      cart: { include: { items: { include: { course: true } } } },
+      status: 'PENDING',
     },
   });
 
-  return checkout;
+  // 5. Create checkout items
+  await prisma.checkoutItem.createMany({
+    data: selectedItems.map(item => ({
+      checkoutId: checkout.id,
+      courseId: item.courseId,
+    })),
+  });
+
+  // 6. Remove purchased items from cart
+  await prisma.cartItem.deleteMany({
+    where: {
+      id: { in: selectedItems.map(item => item.id) },
+    },
+  });
+
+  return await prisma.checkout.findUnique({
+    where: { id: checkout.id },
+    include: {
+      items: {
+        include: {
+          course: {
+            select: {
+              id: true,
+              courseTitle: true,
+              courseShortDescription:true,
+              price: true,
+              discountPrice: true,
+            },
+          },
+        },
+      },
+    },
+  });
+};
+
+// Create checkout from cart
+
+type CreateCheckoutPayload = {
+  all?: boolean;
+  courseIds?: string[];
+};
+
+const createCheckoutIntoDbForCompany = async (
+  companyId: string,
+  data: CreateCheckoutPayload,
+) => {
+  if (!companyId) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'companyId is required for company checkout');
+  }
+
+  // 1. Load the cart owned by this company user (Cart.userId is the owner)
+  const cart = await prisma.cart.findUnique({
+    where: { userId: companyId }, // your Cart model uses unique userId
+    include: { items: { include: { course: true } } },
+  });
+
+  if (!cart || !cart.items || cart.items.length === 0) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Cart is empty');
+  }
+
+  // 2. Decide which cart items will be checked out
+  let itemsToCheckout = cart.items;
+
+  if (!data.all) {
+    if (!data.courseIds || data.courseIds.length === 0) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Provide either all=true or a non-empty courseIds array',
+      );
+    }
+    const courseIdSet = new Set(data.courseIds);
+    itemsToCheckout = cart.items.filter((ci) => courseIdSet.has(ci.courseId));
+  }
+
+  if (!itemsToCheckout.length) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items selected for checkout');
+  }
+
+  // 3. Compute total amount from the selected items
+  const totalAmount = itemsToCheckout.reduce(
+    (sum, item) => sum + (item.course?.price ?? 0),
+    0,
+  );
+
+  // 4. Do the DB changes in a transaction:
+  //    - create Checkout
+  //    - create CheckoutItem rows
+  //    - remove the purchased CartItem rows
+  const createdCheckout = await prisma.$transaction(async (tx) => {
+    // Re-fetch cart items inside tx to avoid race conditions
+    const txCart = await tx.cart.findUnique({
+      where: { id: cart.id },
+      include: { items: true },
+    });
+    if (!txCart) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Cart not found during transaction');
+    }
+
+    // Validate selected item ids still belong to cart
+    const txItemIds = new Set(txCart.items.map((it) => it.id));
+    const selectedItemIds = itemsToCheckout.map((it) => it.id);
+    const missing = selectedItemIds.filter((id) => !txItemIds.has(id));
+    if (missing.length > 0) {
+      throw new AppError(
+        httpStatus.CONFLICT,
+        'Some selected cart items are no longer available. Please refresh your cart.',
+      );
+    }
+
+    // Create the checkout record
+    const checkout = await tx.checkout.create({
+      data: {
+        userId: companyId,
+        totalAmount,
+        status: 'PENDING', // or CheckoutStatus.PENDING if you import enum
+      },
+    });
+
+    // Create CheckoutItem rows (one per selected cart item)
+    // Using createMany for performance
+    await tx.checkoutItem.createMany({
+      data: itemsToCheckout.map((it) => ({
+        checkoutId: checkout.id,
+        courseId: it.courseId,
+      })),
+    });
+
+    // Remove purchased items from cart so user has remaining items left
+    await tx.cartItem.deleteMany({
+      where: {
+        id: { in: selectedItemIds },
+      },
+    });
+
+    return checkout; // tx will return this
+  });
+
+  // 5. Return the checkout with items & course details
+  const result = await prisma.checkout.findUnique({
+    where: { id: createdCheckout.id },
+    include: {
+      items: { include: { course: true } },
+      user: { select: { id: true, fullName: true, email: true, role: true } },
+    },
+  });
+
+  if (!result) {
+    throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, 'Failed to fetch created checkout');
+  }
+
+  return result;
 };
 
 
-const PASSWORD_LENGTH = 10;
+
+
+const PASSWORD_LENGTH = 8;
 const EMAIL_TRIES = 10;
 
 /** Generate a random plain password */
@@ -89,7 +235,10 @@ async function hashPassword(plain: string) {
  */
 async function generateUniqueEmployeeEmail(tx: any, companyEmail: string) {
   if (!companyEmail || !companyEmail.includes('@')) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Company email invalid for generating employee emails');
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'Company email invalid for generating employee emails',
+    );
   }
 
   const [prefix, domain] = companyEmail.split('@');
@@ -99,14 +248,21 @@ async function generateUniqueEmployeeEmail(tx: any, companyEmail: string) {
     const candidate = `${prefix}_emp_${suffix}@${domain}`;
 
     // check user and employeeCredential uniqueness inside transaction
-    const existingUser = await tx.user.findUnique({ where: { email: candidate } });
-    const existingCred = await tx.employeeCredential.findFirst({ where: { loginEmail: candidate } });
+    const existingUser = await tx.user.findUnique({
+      where: { email: candidate },
+    });
+    const existingCred = await tx.employeeCredential.findFirst({
+      where: { loginEmail: candidate },
+    });
 
     if (!existingUser && !existingCred) return candidate;
     tries++;
   }
 
-  throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, 'Could not generate unique employee email (too many collisions)');
+  throw new AppError(
+    httpStatus.INTERNAL_SERVER_ERROR,
+    'Could not generate unique employee email (too many collisions)',
+  );
 }
 
 /**
@@ -119,36 +275,32 @@ async function generateUniqueEmployeeEmail(tx: any, companyEmail: string) {
  * - If checkout.companyId -> create CompanyPurchase + CompanyPurchaseItem(s) + EmployeeCredential(s)
  *   (employee credentials created with hashed password stored in DB; plain password emailed)
  */
-const markCheckoutPaid = async (userId: string, checkoutId: string, paymentId: string) => {
-  // 1) Fetch checkout and cart items (sanity checks)
+const markCheckoutPaid = async (
+  userId: string,
+  checkoutId: string,
+  paymentId: string,
+) => {
+  // 1) Fetch checkout and its items
   const checkout = await prisma.checkout.findUnique({
     where: { id: checkoutId },
     include: {
-      cart: {
-        include: {
-          items: {
-            include: { course: true },
-          },
-        },
-      },
+      items: { include: { course: true } },
+      user: true,
     },
   });
 
   if (!checkout) throw new AppError(httpStatus.NOT_FOUND, 'Checkout not found');
-  if (checkout.status === 'PAID') {
+  if (checkout.status === CheckoutStatus.PAID) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Checkout already paid');
   }
 
-  // ensure either userId xor companyId
-  if (checkout.userId && checkout.companyId) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Checkout cannot have both userId and companyId');
-  }
-  if (!checkout.userId && !checkout.companyId) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Checkout must have either userId or companyId');
+  // Sanity check: must have items
+  if (!checkout.items || checkout.items.length === 0) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Checkout has no items');
   }
 
-  // If individual user checkout -> mark paid and enroll
-  if (checkout.userId) {
+  // 2) Individual student checkout
+  if (checkout.user?.role === 'STUDENT') {
     return await prisma.$transaction(async (tx) => {
       // update checkout status
       await tx.checkout.update({
@@ -156,166 +308,139 @@ const markCheckoutPaid = async (userId: string, checkoutId: string, paymentId: s
         data: { status: CheckoutStatus.PAID, paymentId },
       });
 
-      // create + for each cart item (if not already enrolled)
-      for (const item of checkout.cart.items) {
+      // enroll for each course if not already
+      for (const item of checkout.items) {
         const exists = await tx.enrolledCourse.findFirst({
-          where: { userId: checkout.userId!, courseId: item.courseId },
+          where: { userId: checkout.userId, courseId: item.courseId },
         });
         if (!exists) {
           await tx.enrolledCourse.create({
             data: {
-              userId: checkout.userId!,
+              userId: checkout.userId,
               courseId: item.courseId,
             },
           });
         }
       }
 
-      // optionally: clear cart items (if you want)
-       await tx.cartItem.deleteMany({ where: { cartId: checkout.cart.id } });
-
       return { success: true, type: 'individual', checkoutId };
     });
   }
 
-  // If company checkout -> create purchase + items + credentials
-  // We will create the DB rows in a single transaction, but send emails AFTER commit.
-  // Collect the credentials to email after the tx commits.
-  const createdCredentialsForEmail: Array<{
-    id: string;
-    loginEmail: string;
-    plainPassword: string;
-    courseTitle: string;
-    courseId: string;
-  }> = [];
+  // 3) Company checkout
+  if (checkout.user?.role === UserRoleEnum.COMPANY) {
+    const createdCredentialsForEmail: Array<{
+      id: string;
+      loginEmail: string;
+      plainPassword: string;
+      courseTitle: string;
+      courseId: string;
+    }> = [];
 
-  // 2) Transaction: set checkout to PAID and create companyPurchase + items + credentials (isSent=false)
-  await prisma.$transaction(async (tx) => {
-    // mark checkout paid and attach paymentId
-    await tx.checkout.update({
-      where: { id: checkoutId },
-      data: { status: 'PAID', paymentId },
-    });
-
-    // create CompanyPurchase
-    const purchase = await tx.companyPurchase.create({
-      data: {
-        companyId: checkout.companyId!,
-        totalAmount: checkout.totalAmount ?? 0,
-        invoiceId: paymentId,
-      },
-    });
-
-    // for each cart item create companyPurchaseItem + employeeCredential
-    for (const item of checkout.cart.items) {
-      // create purchase item
-      const purchaseItem = await tx.companyPurchaseItem.create({
-        data: {
-          purchaseId: purchase.id,
-          courseId: item.courseId,
-        },
+    await prisma.$transaction(async (tx) => {
+      // mark checkout paid
+      await tx.checkout.update({
+        where: { id: checkoutId },
+        data: { status: CheckoutStatus.PAID, paymentId },
       });
 
-      // generate unique email (use the tx to check uniqueness)
-      const company = await tx.company.findUnique({ where: { id: checkout.companyId! } });
-      if (!company || !company.companyEmail) {
-        throw new AppError(httpStatus.BAD_REQUEST, 'Company email not found for generating credentials');
+      // create CompanyPurchase
+      const company = await tx.company.findFirst({
+        where: { userId: checkout.userId },
+      });
+      if (!company) {
+        throw new AppError(httpStatus.BAD_REQUEST, 'Company not found for this checkout');
       }
 
-      const loginEmail = await generateUniqueEmployeeEmail(tx, company.companyEmail);
-      const plainPassword = generateRandomPassword();
-      const hashed = await hashPassword(plainPassword);
-
-      // create credential with purchaseItemId reference (purchaseItemId is required in EmployeeCredential)
-      const credential = await tx.employeeCredential.create({
+      const purchase = await tx.companyPurchase.create({
         data: {
-          companyId: checkout.companyId!,
-          purchaseItemId: purchaseItem.id,
-          courseId: item.courseId,
+          companyId: company.id,
+          totalAmount: checkout.totalAmount ?? 0,
+          invoiceId: paymentId,
+        },
+      });
+
+      // create purchase items and credentials
+      for (const item of checkout.items) {
+        const purchaseItem = await tx.companyPurchaseItem.create({
+          data: {
+            purchaseId: purchase.id,
+            courseId: item.courseId,
+          },
+        });
+
+        const loginEmail = await generateUniqueEmployeeEmail(
+          tx,
+          company.companyEmail,
+        );
+        const plainPassword = generateRandomPassword();
+        const hashed = await hashPassword(plainPassword);
+
+        const credential = await tx.employeeCredential.create({
+          data: {
+            companyId: company.id,
+            purchaseItemId: purchaseItem.id,
+            courseId: item.courseId,
+            loginEmail,
+            password: hashed,
+            tempPassword: plainPassword,
+            isSent: false,
+          },
+        });
+
+        createdCredentialsForEmail.push({
+          id: credential.id,
           loginEmail,
-          password: hashed,     // store hashed password in `password` field (per your model)
-          tempPassword: plainPassword, // optional - not recommended for long-term storage but provided per your model
-          isSent: false,       // we'll send email after transaction commits
-        },
-      });
+          plainPassword,
+          courseTitle: item.course?.courseTitle ?? 'Course',
+          courseId: item.courseId,
+        });
+      }
+    });
 
-      // keep a copy to email after transaction commits
-      createdCredentialsForEmail.push({
-        id: credential.id,
-        loginEmail,
-        plainPassword,
-        courseTitle: item.course?.courseTitle ?? 'Course',
-        courseId: item.courseId,
-      });
+    // send emails after commit
+    for (const c of createdCredentialsForEmail) {
+      try {
+        const company = await prisma.company.findFirst({
+          where: { userId: checkout.userId },
+        });
+        const recipient = company?.companyEmail ?? c.loginEmail;
+
+        const html = `
+          <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+            <h2 style="color: #46BEF2;">Your Course Access</h2>
+            <p>A credential has been created for <strong>${c.courseTitle}</strong>.</p>
+            <p>Email: <strong>${c.loginEmail}</strong></p>
+            <p>Password: <strong>${c.plainPassword}</strong></p>
+          </div>
+        `;
+
+        await emailSender(
+          `Course Credentials for ${c.courseTitle}`,
+          recipient,
+          html,
+        );
+
+        await prisma.employeeCredential.update({
+          where: { id: c.id },
+          data: {
+            isSent: true,
+            sentAt: new Date(),
+          },
+        });
+      } catch (err) {
+        console.error('Failed to send credential email for', c.loginEmail, err);
+      }
     }
 
-    // optionally: clear cart items here if you want (inside transaction)
-    await tx.cartItem.deleteMany({ where: { cartId: checkout.cart.id } });
-
-    return;
-  });
-
-  // 3) After transaction committed: send credentials emails and update isSent/sentAt
-  for (const c of createdCredentialsForEmail) {
-    try {
-      // send email to company email (or to the credential login email if you prefer)
-      // I send to the company email as per your flow: manager distributes credentials
-      const company = await prisma.company.findUnique({ where: { id: checkout.companyId! } });
-      const recipient = company?.companyEmail ?? c.loginEmail;
-
-      // email HTML (you can extract to a helper)
-      const html = `
-        <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-          <table width="100%" style="border-collapse: collapse;">
-            <tr>
-              <td style="background-color: #46BEF2; padding: 20px; text-align: center; color: #000000; border-radius: 10px 10px 0 0;">
-                <h2 style="margin: 0; font-size: 24px;">Your Course Access</h2>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 20px;">
-                <p style="font-size: 16px; margin: 0;">Hello,</p>
-                <p style="font-size: 16px;">A credential has been created for <strong>${c.courseTitle}</strong>.</p>
-                <div style="text-align: center; margin: 20px 0;">
-                  <p style="font-size: 18px; margin-bottom: 10px;">Here are the login details:</p>
-                  <p style="font-size: 16px; margin: 5px 0;">Email: <strong>${c.loginEmail}</strong></p>
-                  <p style="font-size: 16px; margin: 5px 0;">Password: <strong>${c.plainPassword}</strong></p>
-                </div>
-                <p style="font-size: 16px;">Please distribute these credentials to the employee. On the first login the employee must complete their profile (first name, last name, date of birth) to get access to the course materials.</p>
-                <p style="font-size: 14px; color: #555;">If you did not request this, please contact support.</p>
-                <p style="font-size: 16px; margin-top: 20px;">Thank you,<br/>Barbers Time</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
-                <p style="margin: 0;">&copy; ${new Date().getFullYear()} Barbers Time. All rights reserved.</p>
-              </td>
-            </tr>
-          </table>
-        </div>
-      `;
-
-      await emailSender(`Course Credentials for ${c.courseTitle}`, recipient, html);
-
-      // update credential isSent true
-      await prisma.employeeCredential.update({
-        where: { id: c.id },
-        data: {
-          isSent: true,
-          sentAt: new Date(),
-          // optional: remove tempPassword for security after sending: tempPassword: null
-        },
-      });
-    } catch (err) {
-      // log error, continue with the next credential
-      console.error('Failed to send credential email for', c.loginEmail, err);
-      // do not throw — you might want to implement retrying later
-    }
+    return { success: true, type: 'company', checkoutId };
   }
 
-  return {type: 'company', checkoutId };
+  throw new AppError(
+    httpStatus.BAD_REQUEST,
+    'Checkout user role must be STUDENT or COMPANY',
+  );
 };
-
 
 const getCheckoutListFromDb = async (userId: string) => {
   const result = await prisma.checkout.findMany();
@@ -372,7 +497,8 @@ const deleteCheckoutItemFromDb = async (userId: string, checkoutId: string) => {
 };
 
 export const checkoutService = {
-  createCheckoutIntoDb,
+  createCheckoutIntoDbForStudent,
+  createCheckoutIntoDbForCompany,
   getCheckoutListFromDb,
   getCheckoutByIdFromDb,
   updateCheckoutIntoDb,

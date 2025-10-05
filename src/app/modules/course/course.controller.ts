@@ -71,9 +71,22 @@ const createCourse = catchAsync(async (req, res) => {
 });
 
 
+const getACourseById = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const result = await courseService.getACourseByIdFromDb(
+    user.id,
+    req.params.id,
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Course details retrieved successfully',
+    data: result,
+  });
+});
 
 const getCourseList = catchAsync(async (req, res) => {
-  const user = req.user as any;
+  // const user = req.user as any;
   const filters = pickValidFields(req.query, [
     'page',
     'limit',
@@ -96,7 +109,7 @@ const getCourseList = catchAsync(async (req, res) => {
     'discountPriceMax',
   ]);
 
-  const result = await courseService.getCourseListFromDb(user.id, filters);
+  const result = await courseService.getCourseListFromDb( filters);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -106,9 +119,9 @@ const getCourseList = catchAsync(async (req, res) => {
 });
 
 const getCourseById = catchAsync(async (req, res) => {
-  const user = req.user as any;
+  // const user = req.user as any;
   const result = await courseService.getCourseByIdFromDb(
-    user.id,
+    // user.id,
     req.params.id,
   );
   sendResponse(res, {
@@ -221,6 +234,7 @@ const deleteCourse = catchAsync(async (req, res) => {
 
 export const courseController = {
   createCourse,
+  getACourseById,
   getCourseList,
   getCourseById,
   updateCourse,

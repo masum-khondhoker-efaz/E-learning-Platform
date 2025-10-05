@@ -54,6 +54,7 @@ model User {
   Checkout           Checkout[]
   ContactUsInfo      ContactUsInfo[]
   FavoriteCourse     FavoriteCourse[]
+  InPersonTraining   InPersonTraining[]
 
   @@map("users")
 }
@@ -74,8 +75,8 @@ model Admin {
 
 model Company {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId         String?  @db.ObjectId
-  companyName    String
+  userId         String   @db.ObjectId
+  companyName    String   @unique
   companyEmail   String   @unique
   companyAddress String
   companyVatId   String
@@ -83,12 +84,13 @@ model Company {
   updatedAt      DateTime @updatedAt
 
   // Relationships
-  User               User?                @relation(fields: [userId], references: [id])
+  User               User                 @relation(fields: [userId], references: [id])
   CompanyPurchase    CompanyPurchase[]
   EmployeeCredential EmployeeCredential[]
   Certificate        Certificate[]
-  Cart               Cart[]
-  Checkout           Checkout[]
+  // Cart               Cart[]
+  // Checkout           Checkout[]
+  // Checkout           Checkout[]
 
   @@map("companies")
 }
@@ -213,6 +215,8 @@ model Course {
   CartItem            CartItem[]
   Review              Review[]
   FavoriteCourse      FavoriteCourse[]
+  InPersonTraining    InPersonTraining[]
+  CheckoutItem        CheckoutItem[]
 
   @@map("courses")
 }
@@ -517,7 +521,6 @@ model Answer {
   @@map("answers")
 }
 
-// Track test attempts and results
 model TestAttempt {
   id          String        @id @default(auto()) @map("_id") @db.ObjectId
   userId      String        @db.ObjectId
@@ -619,16 +622,14 @@ model Reply {
 
 model Cart {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String?  @db.ObjectId // for individual
-  companyId String?  @db.ObjectId // for company
+  userId    String   @unique @db.ObjectId
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relationships
-  user     User?      @relation(fields: [userId], references: [id])
-  company  Company?   @relation(fields: [companyId], references: [id])
-  items    CartItem[]
-  Checkout Checkout[]
+  user  User       @relation(fields: [userId], references: [id])
+  items CartItem[]
+  // Checkout Checkout[]
 
   @@map("carts")
 }
@@ -650,21 +651,30 @@ model CartItem {
 
 model Checkout {
   id          String         @id @default(auto()) @map("_id") @db.ObjectId
-  cartId      String         @db.ObjectId
-  userId      String?        @db.ObjectId // individual
-  companyId   String?        @db.ObjectId // company
+  userId      String         @db.ObjectId
   totalAmount Float
   status      CheckoutStatus @default(PENDING)
-  paymentId   String? // from Stripe/other gateway
+  paymentId   String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
   // Relationships
-  cart    Cart     @relation(fields: [cartId], references: [id])
-  user    User?    @relation(fields: [userId], references: [id])
-  company Company? @relation(fields: [companyId], references: [id])
+  user  User           @relation(fields: [userId], references: [id])
+  items CheckoutItem[]
 
   @@map("checkouts")
+}
+
+model CheckoutItem {
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  checkoutId String @db.ObjectId
+  courseId   String @db.ObjectId
+
+  // Relationships
+  checkout Checkout @relation(fields: [checkoutId], references: [id])
+  course   Course   @relation(fields: [courseId], references: [id])
+
+  @@map("checkout_items")
 }
 
 model NewsletterSubscriber {
@@ -688,6 +698,31 @@ model FavoriteCourse {
 
   @@unique([userId, courseId])
   @@map("favorite_courses")
+}
+
+model InPersonTraining {
+  id        String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String                 @db.ObjectId
+  courseId  String                 @db.ObjectId
+  location  String?
+  duration  Int? // in hours
+  price     Float?
+  status    InPersonTrainingStatus @default(PENDING)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  // Relationships
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@map("in_person_trainings")
+}
+
+enum InPersonTrainingStatus {
+  CONFIRMED
+  PENDING
+  COMPLETED
+  CANCELLED
 }
 
 enum CheckoutStatus {

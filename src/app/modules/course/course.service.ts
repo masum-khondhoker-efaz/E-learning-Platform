@@ -158,8 +158,69 @@ const createCourseIntoDb = async (userId: string, data: any) => {
   });
 };
 
+const getACourseByIdFromDb = async (userId: string, courseId: string) => {
+
+  let isFavoriteCourse = false;
+  const checkFavorite = await prisma.favoriteCourse.findFirst({
+    where: {
+      courseId: courseId,
+    },
+  });
+  if (checkFavorite) {
+    isFavoriteCourse = true;
+  }
+
+
+  const result = await prisma.course.findUnique({
+    where: {
+      id: courseId,
+    },
+    include: {
+      category: {
+        select: {
+          name: true,
+        },
+      },
+      Section: {
+        include: {
+          Lesson: {
+            select: { title: true, order: true },
+            orderBy: { order: 'asc' },
+          },
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      },
+      Review: {
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          user: {
+            select: { id: true, fullName: true, image: true },
+          },
+        },
+      },
+    },
+  });
+  if (!result) {
+    throw new AppError(httpStatus.NOT_FOUND, 'course not found');
+  }
+
+  // Flatten category.name into the course object
+  const { category, ...rest } = result;
+  const formattedResult = {
+    categoryName: category?.name ?? null,
+    ...rest,
+    isFavoriteCourse: isFavoriteCourse,
+  };
+  return formattedResult;
+}
+
 const getCourseListFromDb = async (
-  userId: string,
+  // userId: string,
   options: ISearchAndFilterOptions,
 ) => {
   // Ensure numeric values for price/rating filters
@@ -276,7 +337,7 @@ const getCourseListFromDb = async (
   return formatPaginationResponse(result, total, page, limit);
 };
 
-const getCourseByIdFromDb = async (userId: string, courseId: string) => {
+const getCourseByIdFromDb = async (courseId: string) => {
   const result = await prisma.course.findUnique({
     where: {
       id: courseId,
@@ -323,7 +384,6 @@ const getCourseByIdFromDb = async (userId: string, courseId: string) => {
   };
   return formattedResult;
 };
-
 
 const updateCourseIntoDb = async (
   courseId: string,
@@ -551,10 +611,6 @@ const updateCourseIntoDb = async (
   });
 };
 
-
-
-
-
 // Helper function to get course by ID
 const getCourseById = async (courseId: string) => {
   return await prisma.course.findUnique({
@@ -629,6 +685,7 @@ const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
 
 export const courseService = {
   createCourseIntoDb,
+  getACourseByIdFromDb,
   getCourseListFromDb,
   getCourseByIdFromDb,
   updateCourseIntoDb,

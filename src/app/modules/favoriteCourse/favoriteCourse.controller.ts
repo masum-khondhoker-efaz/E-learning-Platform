@@ -2,10 +2,14 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { favoriteCourseService } from './favoriteCourse.service';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 const createFavoriteCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await favoriteCourseService.createFavoriteCourseIntoDb(user.id, req.body);
+  const result = await favoriteCourseService.createFavoriteCourseIntoDb(
+    user.id,
+    req.body,
+  );
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -16,18 +20,26 @@ const createFavoriteCourse = catchAsync(async (req, res) => {
 
 const getFavoriteCourseList = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await favoriteCourseService.getFavoriteCourseListFromDb(user.id);
+  const result = await favoriteCourseService.getFavoriteCourseListFromDb(
+    user.id,
+    req.query as ISearchAndFilterOptions,
+  );
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'FavoriteCourse list retrieved successfully',
-    data: result,
+    message: 'Favorite courses retrieved successfully',
+    data: result.data,
+    meta: result.meta,
   });
 });
 
 const getFavoriteCourseById = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await favoriteCourseService.getFavoriteCourseByIdFromDb(user.id, req.params.id);
+  const result = await favoriteCourseService.getFavoriteCourseByIdFromDb(
+    user.id,
+    req.params.id,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -38,7 +50,11 @@ const getFavoriteCourseById = catchAsync(async (req, res) => {
 
 const updateFavoriteCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await favoriteCourseService.updateFavoriteCourseIntoDb(user.id, req.params.id, req.body);
+  const result = await favoriteCourseService.updateFavoriteCourseIntoDb(
+    user.id,
+    req.params.id,
+    req.body,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -49,7 +65,10 @@ const updateFavoriteCourse = catchAsync(async (req, res) => {
 
 const deleteFavoriteCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await favoriteCourseService.deleteFavoriteCourseItemFromDb(user.id, req.params.id);
+  const result = await favoriteCourseService.deleteFavoriteCourseItemFromDb(
+    user.id,
+    req.params.id,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

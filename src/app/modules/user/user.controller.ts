@@ -4,7 +4,6 @@ import sendResponse from '../../utils/sendResponse';
 import { UserServices } from '../user/user.service';
 import AppError from '../../errors/AppError';
 import { uploadFileToSpace } from '../../utils/multipleFile';
-import { log } from 'node:console';
 
 const registerUser = catchAsync(async (req, res) => {
   const result = await UserServices.registerUserIntoDB(req.body);
@@ -146,10 +145,10 @@ const updateProfileImage = catchAsync(async (req, res) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'Profile image file is required.');
   }
 
-  // Upload to DigitalOcean
-  const fileUrl = await uploadFileToSpace(file, 'user-profile-images');
+  // Upload to DigitalOcean and get contentType
+  const { url: fileUrl, contentType } = await uploadFileToSpace(file, 'user-profile-images');
 
-  // Update DB
+  // Update DB (you can also store contentType if needed)
   const result = await UserServices.updateProfileImageIntoDB(user.id, fileUrl);
 
   sendResponse(res, {
@@ -158,6 +157,7 @@ const updateProfileImage = catchAsync(async (req, res) => {
     data: result,
   });
 });
+
 
 
 export const UserControllers = {

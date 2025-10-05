@@ -1,3 +1,4 @@
+import { User, UserRoleEnum } from '@prisma/client';
 import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
@@ -5,13 +6,30 @@ import { checkoutService } from './checkout.service';
 
 const createCheckout = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await checkoutService.createCheckoutIntoDb(user.id, req.body);
-  sendResponse(res, {
-    statusCode: httpStatus.CREATED,
-    success: true,
-    message: 'Checkout created successfully',
-    data: result,
-  });
+
+  if (user.role === UserRoleEnum.STUDENT) {
+    const result = await checkoutService.createCheckoutIntoDbForStudent(
+      user.id,
+      req.body,
+    );
+    sendResponse(res, {
+      statusCode: httpStatus.CREATED,
+      success: true,
+      message: 'Checkout created successfully',
+      data: result,
+    });
+  } else {
+    const result = await checkoutService.createCheckoutIntoDbForCompany(
+      user.id,
+      req.body,
+    );
+    sendResponse(res, {
+      statusCode: httpStatus.CREATED,
+      success: true,
+      message: 'Checkout created successfully',
+      data: result,
+    });
+  }
 });
 
 const getCheckoutList = catchAsync(async (req, res) => {
@@ -27,7 +45,10 @@ const getCheckoutList = catchAsync(async (req, res) => {
 
 const getCheckoutById = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await checkoutService.getCheckoutByIdFromDb(user.id, req.params.id);
+  const result = await checkoutService.getCheckoutByIdFromDb(
+    user.id,
+    req.params.id,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -38,7 +59,11 @@ const getCheckoutById = catchAsync(async (req, res) => {
 
 const updateCheckout = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await checkoutService.updateCheckoutIntoDb(user.id, req.params.id, req.body);
+  const result = await checkoutService.updateCheckoutIntoDb(
+    user.id,
+    req.params.id,
+    req.body,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -49,7 +74,10 @@ const updateCheckout = catchAsync(async (req, res) => {
 
 const deleteCheckout = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await checkoutService.deleteCheckoutItemFromDb(user.id, req.params.id);
+  const result = await checkoutService.deleteCheckoutItemFromDb(
+    user.id,
+    req.params.id,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -69,7 +97,11 @@ const markCheckoutPaid = catchAsync(async (req, res) => {
     });
   }
 
-  const result = await checkoutService.markCheckoutPaid(user.id, checkoutId, paymentId);
+  const result = await checkoutService.markCheckoutPaid(
+    user.id,
+    checkoutId,
+    paymentId,
+  );
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

@@ -17,9 +17,16 @@ router.post(
   courseController.createCourse,
 );
 
-router.get('/', auth(), courseController.getCourseList);
 
-router.get('/:id', auth(), courseController.getCourseById);
+router.get(
+  '/details/:id',
+  auth(UserRoleEnum.STUDENT),
+  courseController.getACourseById,
+);
+router.get('/', courseController.getCourseList);
+
+router.get('/:id', courseController.getCourseById);
+
 
 router.patch(
   '/:id',
