@@ -1,18 +1,19 @@
 import prisma from '../../utils/prisma';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import { UserRoleEnum } from '@prisma/client';
 
-const markLessonCompleted = async (userId: string, lessonId: string) => {
+const markLessonCompleted = async (
+  id: string,
+  lessonId: string,
+  role: UserRoleEnum,
+) => {
   return await prisma.$transaction(async (tx) => {
-    // Get lesson details with section and course
+    // 1. Get lesson details
     const lesson = await tx.lesson.findUnique({
       where: { id: lessonId },
       include: {
-        section: {
-          include: {
-            course: true,
-          },
-        },
+        section: { include: { course: true } },
       },
     });
 
@@ -20,76 +21,79 @@ const markLessonCompleted = async (userId: string, lessonId: string) => {
       throw new AppError(httpStatus.NOT_FOUND, 'Lesson not found');
     }
 
-    // Check if user is enrolled in the course
-    const enrollment = await tx.enrolledCourse.findFirst({
-      where: {
-        userId: userId,
-        courseId: lesson.section.courseId,
-      },
-    });
+    // 2. Check enrollment depending on role
+    if (role === UserRoleEnum.EMPLOYEE) {
+  const employeeEnrollment = await tx.employeeCredential.findFirst({
+    where: {
+      id, // employeeCredential.id === the logged in employee’s id
+      courseId: lesson.section.courseId,
+    },
+  });
 
-    if (!enrollment) {
-      throw new AppError(
-        httpStatus.FORBIDDEN,
-        'You are not enrolled in this course',
-      );
+  if (!employeeEnrollment) {
+    throw new AppError(
+      httpStatus.FORBIDDEN,
+      'You are not assigned to this course',
+    );
+  }
+}
+ else {
+      const enrollment = await tx.enrolledCourse.findFirst({
+        where: {
+          userId: id,
+          courseId: lesson.section.courseId,
+        },
+      });
+
+      if (!enrollment) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'You are not enrolled in this course',
+        );
+      }
     }
 
-    // Find existing progress or create new one
-    let progress = await tx.studentProgress.findUnique({
+    // 3. Upsert progress
+    let progress = await tx.studentProgress.findFirst({
       where: {
-        userId_lessonId: {
-          userId: userId,
-          lessonId: lessonId,
-        },
+        lessonId,
+        ...(role === UserRoleEnum.EMPLOYEE ? { employeeId: id } : { userId: id }),
       },
     });
 
     if (progress) {
-      // Update existing progress to completed
-      progress = await tx.studentProgress.update({
-        where: { id: progress.id },
-        data: {
-          isCompleted: true,
-        },
-      });
-    } else {
-      // Create new progress record as completed
-      progress = await tx.studentProgress.create({
-        data: {
-          userId: userId,
-          courseId: lesson.section.courseId,
-          sectionId: lesson.sectionId,
-          lessonId: lessonId,
-          isCompleted: true,
-        },
-      });
-    }
+  progress = await tx.studentProgress.update({
+    where: { id: progress.id },
+    data: { isCompleted: true },
+  });
+} else {
+  progress = await tx.studentProgress.create({
+    data: {
+      userId: id, // always use userId, even for employees
+      courseId: lesson.section.courseId,
+      sectionId: lesson.sectionId,
+      lessonId,
+      isCompleted: true,
+    },
+  });
+}
 
-    // Calculate progress INSIDE the transaction
-    const courseProgress = await calculateProgressInsideTransaction(tx, userId, lesson.section.courseId);
+// 4. Calculate course progress (supports both Employee + User)
+const courseProgress = await calculateProgressInsideTransaction(
+  tx,
+  id, // still userId for both roles
+  lesson.section.courseId,
+  // role,
+);
 
-    // Get the progress record with includes for the response
+
+    // 5. Return response with details
     const progressWithDetails = await tx.studentProgress.findUnique({
       where: { id: progress.id },
       include: {
-        lesson: {
-          select: {
-            title: true,
-            order: true,
-          },
-        },
-        section: {
-          select: {
-            title: true,
-            order: true,
-          },
-        },
-        course: {
-          select: {
-            courseTitle: true,
-          },
-        },
+        lesson: { select: { title: true, order: true } },
+        section: { select: { title: true, order: true } },
+        course: { select: { courseTitle: true } },
       },
     });
 
@@ -101,6 +105,7 @@ const markLessonCompleted = async (userId: string, lessonId: string) => {
     };
   });
 };
+
 
 // Helper function to calculate progress inside transaction
 const calculateProgressInsideTransaction = async (tx: any, userId: string, courseId: string) => {

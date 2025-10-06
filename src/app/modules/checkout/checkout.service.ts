@@ -1,5 +1,5 @@
 import prisma from '../../utils/prisma';
-import { CheckoutStatus, UserRoleEnum, UserStatus } from '@prisma/client';
+import { CheckoutStatus, UserRoleEnum, PaymentStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import * as bcrypt from 'bcrypt';
@@ -50,7 +50,7 @@ const createCheckoutIntoDbForStudent = async (
     data: {
       userId,
       totalAmount,
-      status: 'PENDING',
+      status: CheckoutStatus.PENDING,
     },
   });
 
@@ -111,7 +111,7 @@ const createCheckoutIntoDbForCompany = async (
   });
 
   if (!cart || !cart.items || cart.items.length === 0) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Cart is empty');
+    return {message: 'Cart is empty'};
   }
 
   // 2. Decide which cart items will be checked out
@@ -168,7 +168,7 @@ const createCheckoutIntoDbForCompany = async (
       data: {
         userId: companyId,
         totalAmount,
-        status: 'PENDING', // or CheckoutStatus.PENDING if you import enum
+        status: CheckoutStatus.PENDING
       },
     });
 
@@ -192,22 +192,25 @@ const createCheckoutIntoDbForCompany = async (
   });
 
   // 5. Return the checkout with items & course details
-  const result = await prisma.checkout.findUnique({
+  return await prisma.checkout.findUnique({
     where: { id: createdCheckout.id },
     include: {
-      items: { include: { course: true } },
-      user: { select: { id: true, fullName: true, email: true, role: true } },
+      items: {
+        include: {
+          course: {
+            select: {
+              id: true,
+              courseTitle: true,
+              courseShortDescription:true,
+              price: true,
+              discountPrice: true,
+            },
+          },
+        },
+      },
     },
   });
-
-  if (!result) {
-    throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, 'Failed to fetch created checkout');
-  }
-
-  return result;
 };
-
-
 
 
 const PASSWORD_LENGTH = 8;
@@ -276,7 +279,7 @@ async function generateUniqueEmployeeEmail(tx: any, companyEmail: string) {
  *   (employee credentials created with hashed password stored in DB; plain password emailed)
  */
 const markCheckoutPaid = async (
-  userId: string,
+  // userId: string,
   checkoutId: string,
   paymentId: string,
 ) => {
@@ -300,7 +303,7 @@ const markCheckoutPaid = async (
   }
 
   // 2) Individual student checkout
-  if (checkout.user?.role === 'STUDENT') {
+  if (checkout.user?.role === UserRoleEnum.STUDENT) {
     return await prisma.$transaction(async (tx) => {
       // update checkout status
       await tx.checkout.update({
@@ -318,6 +321,7 @@ const markCheckoutPaid = async (
             data: {
               userId: checkout.userId,
               courseId: item.courseId,
+              paymentStatus: PaymentStatus.COMPLETED,
             },
           });
         }
@@ -354,7 +358,7 @@ const markCheckoutPaid = async (
 
       const purchase = await tx.companyPurchase.create({
         data: {
-          companyId: company.id,
+          companyId: company.userId,
           totalAmount: checkout.totalAmount ?? 0,
           invoiceId: paymentId,
         },
@@ -384,6 +388,7 @@ const markCheckoutPaid = async (
             loginEmail,
             password: hashed,
             tempPassword: plainPassword,
+            paymentStatus: PaymentStatus.COMPLETED,
             isSent: false,
           },
         });
@@ -403,8 +408,15 @@ const markCheckoutPaid = async (
       try {
         const company = await prisma.company.findFirst({
           where: { userId: checkout.userId },
+          include: { User: {
+            select: { email: true }
+          } },
         });
-        const recipient = company?.companyEmail ?? c.loginEmail;
+        const recipient = company?.User.email;
+        if (!recipient) {
+          console.error('Company email not found, cannot send credentials');
+          continue;
+        }
 
         const html = `
           <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
@@ -426,6 +438,7 @@ const markCheckoutPaid = async (
           data: {
             isSent: true,
             sentAt: new Date(),
+            tempPassword: null, // clear temp password after sending
           },
         });
       } catch (err) {

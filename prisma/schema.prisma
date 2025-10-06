@@ -9,7 +9,7 @@ datasource db {
 
 model User {
   id                         String        @id @default(auto()) @map("_id") @db.ObjectId
-  fullName                   String
+  fullName                   String?
   email                      String        @unique
   password                   String?
   role                       UserRoleEnum  @default(STUDENT)
@@ -75,7 +75,7 @@ model Admin {
 
 model Company {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId         String   @db.ObjectId
+  userId         String   @unique @db.ObjectId
   companyName    String   @unique
   companyEmail   String   @unique
   companyAddress String
@@ -104,7 +104,7 @@ model CompanyPurchase {
   updatedAt   DateTime @updatedAt
 
   // Relationships
-  company Company               @relation(fields: [companyId], references: [id])
+  company Company               @relation(fields: [companyId], references: [userId])
   items   CompanyPurchaseItem[] // each item = one course purchased
 
   @@map("company_purchases")
@@ -127,24 +127,22 @@ model CompanyPurchaseItem {
 }
 
 model EmployeeCredential {
-  id             String    @id @default(auto()) @map("_id") @db.ObjectId
-  companyId      String    @db.ObjectId
-  purchaseItemId String    @unique @db.ObjectId
-  courseId       String    @db.ObjectId
-  loginEmail     String    @unique
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  companyId      String        @db.ObjectId
+  purchaseItemId String        @unique @db.ObjectId
+  courseId       String        @db.ObjectId
+  loginEmail     String        @unique
   password       String
   tempPassword   String?
-  isSent         Boolean   @default(false)
-  sentAt         DateTime?
-  isActivated    Boolean   @default(false)
-  activatedAt    DateTime?
-  firstName      String?
-  lastName       String?
-  dateOfBirth    DateTime?
-  userId         String?   @db.ObjectId
-  certificateId  String?   @db.ObjectId
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  isSent         Boolean       @default(false)
+  sentAt         DateTime      @default(now())
+  paymentStatus  PaymentStatus @default(PENDING)
+  isCompleted    Boolean       @default(false)
+  progress       Float         @default(0)
+  userId         String?       @db.ObjectId
+  certificateId  String?       @db.ObjectId
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   // Relationships
   user         User?               @relation(fields: [userId], references: [id])
@@ -810,6 +808,7 @@ enum UserRoleEnum {
   SUPER_ADMIN
   INSTRUCTOR
   COMPANY
+  EMPLOYEE
 }
 
 enum UserStatus {

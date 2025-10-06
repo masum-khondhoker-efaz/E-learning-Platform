@@ -3,6 +3,8 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { checkoutService } from './checkout.service';
+import prisma from '../../utils/prisma';
+import AppError from '../../errors/AppError';
 
 const createCheckout = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -19,6 +21,18 @@ const createCheckout = catchAsync(async (req, res) => {
       data: result,
     });
   } else {
+    const userRole = user.role;
+    if (userRole === UserRoleEnum.EMPLOYEE) {
+      const findUser = await prisma.user.findUnique({
+        where: { id: user.id, isProfileComplete: true },
+      });
+      if (!findUser) {
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'You cannot add a course to the checkout.',
+        );
+      }
+    }
     const result = await checkoutService.createCheckoutIntoDbForCompany(
       user.id,
       req.body,
@@ -90,15 +104,8 @@ const markCheckoutPaid = catchAsync(async (req, res) => {
   const user = req.user as any;
   const { checkoutId, paymentId } = req.body;
 
-  if (typeof checkoutId !== 'string' || typeof paymentId !== 'string') {
-    return res.status(httpStatus.BAD_REQUEST).json({
-      status: 'error',
-      message: 'Invalid query parameters',
-    });
-  }
-
   const result = await checkoutService.markCheckoutPaid(
-    user.id,
+    // user.id,
     checkoutId,
     paymentId,
   );

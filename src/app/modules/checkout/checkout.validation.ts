@@ -8,9 +8,13 @@ const createSchema = z.object({
 });
 
 const markCheckoutSchema = z.object({
-  params: z.object({
-    checkoutId: z.string(),
-    paymentId: z.string(),
+  body: z.object({
+    checkoutId: z.string({
+      required_error: 'checkoutId is required',
+    }),
+    paymentId: z.string({
+      required_error: 'paymentId is required',
+    }),
   }),
 });
 

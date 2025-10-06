@@ -2,9 +2,24 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { inPersonTrainingService } from './inPersonTraining.service';
+import { UserRoleEnum } from '@prisma/client';
+import prisma from '../../utils/prisma';
+import AppError from '../../errors/AppError';
 
 const createInPersonTraining = catchAsync(async (req, res) => {
   const user = req.user as any;
+  const userRole = user.role;
+  if (userRole === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'You cannot add a course to the cart.',
+      );
+    }
+  }
   const result = await inPersonTrainingService.createInPersonTrainingIntoDb(
     user.id,
     req.body,

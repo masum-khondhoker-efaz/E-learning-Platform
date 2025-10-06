@@ -14,7 +14,7 @@ router.post(
   checkoutController.createCheckout,
 );
 
-router.patch(
+router.post(
   '/mark-checkout',
   auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
   validateRequest(checkoutValidation.markCheckoutSchema),

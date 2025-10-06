@@ -3,6 +3,7 @@ import { PaymentStatus, UserRoleEnum, UserStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { format } from 'path';
+import { studentProgressService } from '../studentProgress/studentProgress.service';
 
 const createEnrolledCourseIntoDb = async (
   userId: string,
@@ -62,7 +63,7 @@ const getEnrolledCourseListFromDb = async (userId: string) => {
     return { message: 'No enrolledCourse found' };
   }
 
-  return result.map((enrolled) => ({
+  return result.map(enrolled => ({
     id: enrolled.id,
     courseId: enrolled.courseId,
     paymentStatus: enrolled.paymentStatus,
@@ -74,14 +75,14 @@ const getEnrolledCourseListFromDb = async (userId: string) => {
     courseTitle: enrolled.course?.courseTitle,
     coursePrice: enrolled.course?.price,
   }));
-  
 };
 
-const getEnrolledCourseByStudentIdFromDb = async (userId: string, studentId: string) => {
+const getEnrolledCourseByStudentIdFromDb = async (
+  userId: string,
+  studentId: string,
+) => {
   const result = await prisma.enrolledCourse.findMany({
-    where: { userId: studentId,
-       paymentStatus: PaymentStatus.COMPLETED 
-      },
+    where: { userId: studentId, paymentStatus: PaymentStatus.COMPLETED },
     select: {
       id: true,
       courseId: true,
@@ -95,7 +96,7 @@ const getEnrolledCourseByStudentIdFromDb = async (userId: string, studentId: str
     return { message: 'No enrolledCourse found for this student' };
   }
 
-  return result.map((enrolled) => ({
+  return result.map(enrolled => ({
     id: enrolled.id,
     courseId: enrolled.courseId,
     paymentStatus: enrolled.paymentStatus,
@@ -110,37 +111,71 @@ const getEnrolledCourseByStudentIdFromDb = async (userId: string, studentId: str
 };
 
 const getMyEnrolledCoursesFromDb = async (userId: string) => {
-  const result = await prisma.enrolledCourse.findMany({
-    where: { userId: userId, 
-      paymentStatus: PaymentStatus.COMPLETED 
-    },
+  const enrolledCourses = await prisma.enrolledCourse.findMany({
+    where: { userId, paymentStatus: PaymentStatus.COMPLETED },
     select: {
       id: true,
       courseId: true,
       paymentStatus: true,
       enrolledAt: true,
-      user: { select: { id: true, fullName: true, email: true, image: true } },
       course: { select: { id: true, courseTitle: true, price: true } },
     },
   });
-  if (result.length === 0) {
+
+  if (!enrolledCourses.length) {
     return { message: 'No enrolledCourse found for this student' };
   }
 
-  return result.map((enrolled) => ({
+  const courseProgressList = await studentProgressService.getAllCourseProgress(userId);
+  const progressMap = new Map<string, typeof courseProgressList[number]>();
+  courseProgressList.forEach(progress => {
+    progressMap.set(progress.courseId, progress);
+  });
+
+  return enrolledCourses.map(enrolled => ({
     id: enrolled.id,
     courseId: enrolled.courseId,
     paymentStatus: enrolled.paymentStatus,
     enrolledAt: enrolled.enrolledAt,
-    userId: enrolled.user?.id,
-    userFullName: enrolled.user?.fullName,
-    userEmail: enrolled.user?.email,
-    userImage: enrolled.user?.image,
     courseTitle: enrolled.course?.courseTitle,
     coursePrice: enrolled.course?.price,
+    progress: progressMap.get(enrolled.courseId) || {
+      completedLessons: 0,
+      totalLessons: 0,
+      progressPercentage: 0,
+    },
   }));
-}
-    
+};
+
+const getMyEnrolledCoursesForEmployeeFromDb = async (userId: string) => {
+  const result = await prisma.employeeCredential.findMany({
+    where: { userId: userId, paymentStatus: PaymentStatus.COMPLETED },
+    select: {
+      id: true,
+      paymentStatus: true,
+      sentAt: true,
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          price: true,
+        },
+      },
+    },
+  });
+
+  if (result.length === 0) {
+    return { message: 'No enrolledCourse found for this employee' };
+  }
+  return result.map(credential => ({
+    id: credential.id,
+    courseId: credential.course?.id,
+    courseTitle: credential.course?.courseTitle,
+    coursePrice: credential.course?.price,
+    paymentStatus: credential.paymentStatus,
+    enrolledAt: credential.sentAt,
+  }));
+};
 
 const getMyEnrolledCourseByIdFromDb = async (
   userId: string,
@@ -200,6 +235,7 @@ export const enrolledCourseService = {
   createEnrolledCourseIntoDb,
   getEnrolledCourseListFromDb,
   getEnrolledCourseByStudentIdFromDb,
+  getMyEnrolledCoursesForEmployeeFromDb,
   getMyEnrolledCoursesFromDb,
   getMyEnrolledCourseByIdFromDb,
   updateEnrolledCourseIntoDb,

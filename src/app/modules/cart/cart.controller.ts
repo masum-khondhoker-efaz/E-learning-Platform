@@ -2,9 +2,24 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { cartService } from './cart.service';
+import { UserRoleEnum } from '@prisma/client';
+import prisma from '../../utils/prisma';
+import AppError from '../../errors/AppError';
 
 const createCart = catchAsync(async (req, res) => {
   const user = req.user as any;
+  const userRole = user.role;
+  if (userRole === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'You cannot add a course to the cart.',
+      );
+    }
+  }
   const result = await cartService.createCartIntoDb(user.id, req.body);
   sendResponse(res, {
     statusCode: httpStatus.CREATED,

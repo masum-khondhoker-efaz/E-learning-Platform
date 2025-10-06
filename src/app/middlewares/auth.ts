@@ -22,7 +22,6 @@ const auth = (...roles: string[]) => {
         config.jwt.access_secret as Secret,
       );
 
-
       // Check token purpose
       if (!verifyUserToken.purpose || verifyUserToken.purpose !== 'access') {
         throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid token purpose!');
@@ -42,11 +41,13 @@ const auth = (...roles: string[]) => {
           'User is not active. Please contact support.',
         );
       }
-      // if (!user.isProfileComplete) {
-      //   throw new AppError(
-      //     httpStatus.FORBIDDEN,
-      //     'Please complete your profile to proceed.',
-      //   );
+      // if (user.role === UserRoleEnum.EMPLOYEE) {
+      //   if (!user.isProfileComplete) {
+      //     throw new AppError(
+      //       httpStatus.FORBIDDEN,
+      //       'Please complete your profile to proceed.',
+      //     );
+      //   }
       // }
 
       // Role-based access check

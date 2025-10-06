@@ -9,39 +9,38 @@ const router = express.Router();
 
 router.post(
   '/',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
   validateRequest(inPersonTrainingValidation.createSchema),
   inPersonTrainingController.createInPersonTraining,
 );
 
-
 router.get(
   '/my-requests',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT,UserRoleEnum.COMPANY),
   inPersonTrainingController.getMyInPersonTrainingRequest,
 );
 
 router.get(
   '/my-requests/:id',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT,UserRoleEnum.COMPANY),
   inPersonTrainingController.getMyInPersonTrainingRequestById,
 );
 
 router.get(
   '/my-trainings',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT,UserRoleEnum.COMPANY),
   inPersonTrainingController.getMyInPersonTrainings,
 );
 
 router.get(
   '/my-trainings/:id',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT,UserRoleEnum.COMPANY),
   inPersonTrainingController.getMyInPersonTrainingById,
 );
 
 router.get(
   '/',
-  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  auth(UserRoleEnum.SUPER_ADMIN,UserRoleEnum.ADMIN),
   inPersonTrainingController.getInPersonTrainingList,
 );
 
@@ -50,7 +49,6 @@ router.get(
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   inPersonTrainingController.getInPersonTrainingById,
 );
-
 
 router.patch(
   '/:id',

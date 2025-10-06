@@ -28,7 +28,6 @@ const registerUserIntoDB = async (payload: {
   companyEmail?: string;
   companyAddress?: string;
   companyVatId?: string;
-
 }) => {
   // check existing user
   if (payload.email) {
@@ -40,7 +39,7 @@ const registerUserIntoDB = async (payload: {
     }
   }
 
-  const {email, fullName, password, ...rest} = payload;
+  const { email, fullName, password, ...rest } = payload;
   // hash password
   const hashedPassword = await bcrypt.hash(payload.password, 12);
 
@@ -58,8 +57,12 @@ const registerUserIntoDB = async (payload: {
     throw new AppError(httpStatus.BAD_REQUEST, 'User not created!');
   }
 
-
-   if(payload.companyName && payload.companyEmail && payload.companyAddress && payload.companyVatId){
+  if (
+    payload.companyName &&
+    payload.companyEmail &&
+    payload.companyAddress &&
+    payload.companyVatId
+  ) {
     // create company
     const company = await prisma.company.create({
       data: {
@@ -80,7 +83,6 @@ const registerUserIntoDB = async (payload: {
       data: { role: UserRoleEnum.COMPANY },
     });
   }
-
 
   // generate OTP + JWT token
   const { otp, otpToken } = generateOtpToken(user.email);
@@ -116,8 +118,7 @@ const registerUserIntoDB = async (payload: {
       </div>`,
   );
 
-  return otpToken // return to client for verification step
-  
+  return otpToken; // return to client for verification step
 };
 
 //resend verification email
@@ -169,8 +170,7 @@ const resendUserVerificationEmail = async (email: string) => {
   );
 
   // ✅ Return token for frontend to verify later
-  return otpToken // frontend must keep this for verification
-  
+  return otpToken; // frontend must keep this for verification
 };
 
 const getMyProfileFromDB = async (id: string) => {
@@ -198,6 +198,17 @@ const getMyProfileFromDB = async (id: string) => {
 const updateMyProfileIntoDB = async (id: string, payload: any) => {
   const userData = payload;
 
+  const existingUser = await prisma.user.findUnique({
+    where: { id },
+  });
+  if (!existingUser) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
+  }
+
+  if (existingUser.role === UserRoleEnum.EMPLOYEE && payload.fullName) {
+    userData.isProfileComplete = true;
+  }
+
   // update user data
   await prisma.$transaction(async (transactionClient: any) => {
     // Update user data
@@ -210,7 +221,7 @@ const updateMyProfileIntoDB = async (id: string, payload: any) => {
   });
 
   // Fetch and return the updated user
-  const updatedUser = await prisma.user.findUniqueOrThrow({
+  const updatedUser = await prisma.user.findUnique({
     where: { id },
     select: {
       id: true,
@@ -221,6 +232,9 @@ const updateMyProfileIntoDB = async (id: string, payload: any) => {
       gender: true,
     },
   });
+  if (!updatedUser) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'User not updated!');
+  }
 
   // const userWithOptionalPassword = updatedUser as UserWithOptionalPassword;
   // delete userWithOptionalPassword.password;
@@ -343,8 +357,7 @@ const forgotPassword = async (payload: { email: string }) => {
   );
 
   // ✅ Return token to frontend for later verification
-  return otpToken // frontend must send this back with OTP for verification
-  
+  return otpToken; // frontend must send this back with OTP for verification
 };
 
 //resend otp
@@ -396,72 +409,71 @@ const resendOtpIntoDB = async (payload: { email: string }) => {
   );
 
   // ✅ Return token to frontend for verification
-  return otpToken
-
+  return otpToken;
 };
 
 // verify otp
-const verifyOtpInDB1 = async (bodyData: {
-  email: string;
-  password: string;
-  otp: number;
-}) => {
-  const userData = await prisma.user.findUnique({
-    where: { email: bodyData.email },
-  });
+// const verifyOtpInDB1 = async (bodyData: {
+//   email: string;
+//   password: string;
+//   otp: number;
+// }) => {
+//   const userData = await prisma.user.findUnique({
+//     where: { email: bodyData.email },
+//   });
 
-  if (!userData) {
-    throw new AppError(httpStatus.CONFLICT, 'User not found!');
-  }
+//   if (!userData) {
+//     throw new AppError(httpStatus.CONFLICT, 'User not found!');
+//   }
 
-  const currentTime = new Date();
+//   const currentTime = new Date();
 
-  // if (userData.otp !== bodyData.otp) {
-  //   throw new AppError(httpStatus.CONFLICT, 'Your OTP is incorrect!');
-  // }
+//   // if (userData.otp !== bodyData.otp) {
+//   //   throw new AppError(httpStatus.CONFLICT, 'Your OTP is incorrect!');
+//   // }
 
-  // if (!userData.otpExpiry || userData.otpExpiry <= currentTime) {
-  //   throw new AppError(
-  //     httpStatus.CONFLICT,
-  //     'Your OTP has expired. Please request a new one.',
-  //   );
-  // }
+//   // if (!userData.otpExpiry || userData.otpExpiry <= currentTime) {
+//   //   throw new AppError(
+//   //     httpStatus.CONFLICT,
+//   //     'Your OTP has expired. Please request a new one.',
+//   //   );
+//   // }
 
-  // Prepare common fields
-  const updateData: any = {
-    otp: null,
-    otpExpiry: null,
-  };
+//   // Prepare common fields
+//   const updateData: any = {
+//     otp: null,
+//     otpExpiry: null,
+//   };
 
-  // If user is not active, determine what else to update
-  if (userData.status !== UserStatus.ACTIVE) {
-    // updateData.status = UserStatus.ACTIVE;
-  }
+//   // If user is not active, determine what else to update
+//   if (userData.status !== UserStatus.ACTIVE) {
+//     // updateData.status = UserStatus.ACTIVE;
+//   }
 
-  await prisma.user.update({
-    where: { email: bodyData.email },
-    data: updateData,
-  });
+//   await prisma.user.update({
+//     where: { email: bodyData.email },
+//     data: updateData,
+//   });
 
-  // Create a new Stripe customer
-  const customer = await stripe.customers.create({
-    name: userData.fullName,
-    email: userData.email,
-    address: {
-      city: userData.address ?? 'City', // You can modify this as needed
-      country: 'America', // You can modify this as needed
-    },
-    metadata: {
-      userId: userData.id,
-      role: userData.role,
-    },
-  });
-  if (!customer || !customer.id) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Stripe customer not created!');
-  }
+//   // Create a new Stripe customer
+//   const customer = await stripe.customers.create({
+//     name: userData.fullName,
+//     email: userData.email,
+//     address: {
+//       city: userData.address ?? 'City', // You can modify this as needed
+//       country: 'America', // You can modify this as needed
+//     },
+//     metadata: {
+//       userId: userData.id,
+//       role: userData.role,
+//     },
+//   });
+//   if (!customer || !customer.id) {
+//     throw new AppError(httpStatus.BAD_REQUEST, 'Stripe customer not created!');
+//   }
 
-  return { message: 'OTP verified successfully!' };
-};
+//   return { message: 'OTP verified successfully!' };
+// };
 
 const verifyOtpInDB = async (bodyData: {
   email: string;
@@ -488,13 +500,14 @@ const verifyOtpInDB = async (bodyData: {
     data: {
       status: UserStatus.ACTIVE,
       isVerified: true,
+      isProfileComplete: true,
     },
   });
 
   // Ensure Stripe customer
   if (!updatedUser.stripeCustomerId) {
     const customer = await stripe.customers.create({
-      name: userData.fullName,
+      name: userData.fullName!,
       email: userData.email,
       address: {
         city: userData.address ?? 'City',
@@ -542,7 +555,6 @@ const verifyOtpForgotPasswordInDB = async (payload: {
       isVerifiedForPasswordReset: true, // flag to allow password reset
     },
   });
- 
 
   return;
 };
@@ -602,8 +614,6 @@ const socialLoginIntoDB = async (payload: SocialLoginPayload) => {
         'Your account is blocked. Please contact support.',
       );
     }
-
-
   } else {
     // Validate and sanitize role for new users (default to STUDENT if invalid/missing)
     let userRole: UserRoleEnum = UserRoleEnum.STUDENT;
@@ -704,7 +714,10 @@ const updatePasswordIntoDb = async (payload: any) => {
 
   // Only allow password update if user has verified OTP (e.g., set a flag after OTP verification)
   if (userData.isVerifiedForPasswordReset !== true) {
-    throw new AppError(httpStatus.FORBIDDEN, 'OTP verification required before updating password.');
+    throw new AppError(
+      httpStatus.FORBIDDEN,
+      'OTP verification required before updating password.',
+    );
   }
 
   const hashedPassword: string = await bcrypt.hash(payload.password, 12);

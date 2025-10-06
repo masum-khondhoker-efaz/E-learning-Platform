@@ -8,97 +8,144 @@ import prisma from '../../utils/prisma';
 import { verifyToken } from '../../utils/verifyToken';
 import { UserRoleEnum, UserStatus } from '@prisma/client';
 
-const loginUserFromDB = async (payload: {
-  email: string;
-  password: string;
-}) => {
-  const userData = await prisma.user.findUnique({
-    where: {
-      email: payload.email,
-    },
+const loginUserFromDB = async (payload: { email: string; password: string }) => {
+  // 1. Try to find a user directly
+  let user = await prisma.user.findUnique({
+    where: { email: payload.email },
   });
 
-  if (!userData) {
-    throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+  // 2. If no user, try to log in with EmployeeCredential
+  if (!user) {
+    const employeeCred = await prisma.employeeCredential.findUnique({
+      where: { loginEmail: payload.email },
+    });
+
+    if (!employeeCred) {
+      throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+    }
+
+    // Validate password
+    const validPassword = await bcrypt.compare(payload.password, employeeCred.password);
+    if (!validPassword) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Password incorrect');
+    }
+
+    // Check if user already created
+    const existingUser = await prisma.user.findUnique({
+      where: { email: employeeCred.loginEmail },
+    });
+    if (existingUser) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'User already exists, please login with your credentials',
+      );
+    }
+
+    // Create new EMPLOYEE user
+    const hashedPassword = await bcrypt.hash(payload.password, 12);
+    user = await prisma.user.create({
+      data: {
+        email: employeeCred.loginEmail,
+        password: hashedPassword,
+        role: UserRoleEnum.EMPLOYEE,
+        isVerified: true,
+        isProfileComplete: false,
+        status: UserStatus.ACTIVE,
+      },
+    });
+
+    if (!user) {
+      throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, 'User creation failed');
+    }
+
+    await prisma.employeeCredential.update({
+      where: { loginEmail: employeeCred.loginEmail },
+      data: { userId: user.id },
+    });
+
+    const accessToken = await generateToken(
+      { id: user.id, email: user.email, role: user.role, purpose: 'access' },
+      config.jwt.access_secret as Secret,
+      config.jwt.access_expires_in as string,
+    );
+
+    return {
+      id: user.id,
+      role: user.role,
+      message: 'Please complete your profile before proceeding.',
+      accessToken,
+    };
   }
 
-  if (userData.password === null) {
+  // 3. Validate password for normal users
+  if (!user.password) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Password is not set');
   }
 
-  const isCorrectPassword: Boolean = await bcrypt.compare(
-    payload.password,
-    userData.password,
-  );
-
-  if (!isCorrectPassword) {
+  const validPassword = await bcrypt.compare(payload.password, user.password);
+  if (!validPassword) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Password incorrect');
   }
-  // if (
-  //   userData.isProfileComplete === false ||
-  //   userData.isProfileComplete === null
-  // ) {
-  //   throw new AppError(
-  //     httpStatus.BAD_REQUEST,
-  //     'Please complete your profile before logging in',
-  //   );
-  // }
 
-  if(userData.status === UserStatus.PENDING || userData.isVerified === false){
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      'Please verify your email before logging in',
+  // 4. Special checks for EMPLOYEE with incomplete profile
+  if (
+    user.role === UserRoleEnum.EMPLOYEE &&
+    (user.isProfileComplete === false || user.isProfileComplete === null)
+  ) {
+    const accessToken = await generateToken(
+      { id: user.id, email: user.email, role: user.role, purpose: 'access' },
+      config.jwt.access_secret as Secret,
+      config.jwt.access_expires_in as string,
     );
+
+    return {
+      id: user.id,
+      role: user.role,
+      message: 'Please complete your profile before proceeding.',
+      accessToken,
+    };
   }
 
-  if (userData.status === UserStatus.BLOCKED) {
-    throw new AppError(
-      httpStatus.FORBIDDEN,
-      'Your account is blocked. Please contact support.',
-    );
+  // 5. Account status checks
+  if (user.status === UserStatus.PENDING || user.isVerified === false) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Please verify your email before logging in');
+  }
+  if (user.status === UserStatus.BLOCKED) {
+    throw new AppError(httpStatus.FORBIDDEN, 'Your account is blocked. Please contact support.');
   }
 
-
-  if (userData.isLoggedIn === false) {
-    const updateUser = await prisma.user.update({
-      where: { id: userData.id },
+  // 6. Mark user as logged in
+  if (user.isLoggedIn === false) {
+    await prisma.user.update({
+      where: { id: user.id },
       data: { isLoggedIn: true },
     });
-    if (!updateUser) {
-      throw new AppError(httpStatus.INTERNAL_SERVER_ERROR, 'User login failed');
-    }
   }
 
+  // 7. Issue tokens
   const accessToken = await generateToken(
-    {
-      id: userData.id,
-      email: userData.email,
-      role: userData.role,
-      purpose: 'access',
-    },
+    { id: user.id, email: user.email, role: user.role, purpose: 'access' },
     config.jwt.access_secret as Secret,
     config.jwt.access_expires_in as string,
   );
 
-  const refreshedToken = await refreshToken(
-    {
-      id: userData.id,
-      email: userData.email,
-      role: userData.role,
-    },
+  const refreshTokenValue = await refreshToken(
+    { id: user.id, email: user.email, role: user.role },
     config.jwt.refresh_secret as Secret,
     config.jwt.refresh_expires_in as string,
   );
+
   return {
-    id: userData.id,
-    name: userData.fullName,
-    email: userData.email,
-    role: userData.role,
-    image: userData.image,
-    accessToken: accessToken,
-    refreshToken: refreshedToken,
+    id: user.id,
+    name: user.fullName,
+    email: user.email,
+    role: user.role,
+    image: user.image,
+    accessToken,
+    refreshToken: refreshTokenValue,
   };
 };
+
 
 const refreshTokenFromDB = async (refreshedToken: string) => {
   if (!refreshedToken) {
@@ -124,14 +171,12 @@ const refreshTokenFromDB = async (refreshedToken: string) => {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found');
   }
 
-
   const newAccessToken = await generateToken(
     {
       id: userData.id,
       email: userData.email,
       role: userData.role,
       purpose: 'access',
-  
     },
     config.jwt.access_secret as Secret,
     config.jwt.access_expires_in as string,

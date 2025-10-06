@@ -2,13 +2,31 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { studentProgressService } from './studentProgress.service';
+import { UserRoleEnum } from '@prisma/client';
+import prisma from '../../utils/prisma';
+import AppError from '../../errors/AppError';
 
 // studentProgress.controller.ts
 const markLessonCompleted = catchAsync(async (req, res) => {
   const user = req.user as any;
+  const userRole = user.role;
+
+  if (userRole === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'Please complete your profile to proceed.',
+      );
+    }
+  }
+
   const result = await studentProgressService.markLessonCompleted(
     user.id,
     req.body.lessonId,
+    userRole,
   );
 
   sendResponse(res, {

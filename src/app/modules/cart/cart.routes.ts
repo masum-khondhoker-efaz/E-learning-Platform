@@ -9,22 +9,34 @@ const router = express.Router();
 
 router.post(
   '/',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
   validateRequest(cartValidation.createSchema),
   cartController.createCart,
 );
 
-router.get('/', auth(UserRoleEnum.STUDENT), cartController.getCartList);
+router.get(
+  '/',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
+  cartController.getCartList,
+);
 
-router.get('/:id', auth(UserRoleEnum.STUDENT), cartController.getCartById);
+router.get(
+  '/:id',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
+  cartController.getCartById,
+);
 
 router.put(
   '/:id',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
   validateRequest(cartValidation.updateSchema),
   cartController.updateCart,
 );
 
-router.delete('/:id', auth(UserRoleEnum.STUDENT), cartController.deleteCart);
+router.delete(
+  '/:id',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
+  cartController.deleteCart,
+);
 
 export const cartRoutes = router;

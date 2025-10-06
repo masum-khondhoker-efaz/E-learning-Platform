@@ -28,13 +28,13 @@ router.get(
 
 router.get(
   '/my-courses',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
   enrolledCourseController.getMyEnrolledCourses,
 );
 
 router.get(
   '/my-courses/:id',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
   enrolledCourseController.getMyEnrolledCourseById,
 );
 

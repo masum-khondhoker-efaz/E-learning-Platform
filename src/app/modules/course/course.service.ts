@@ -242,6 +242,7 @@ const getCourseListFromDb = async (
     'courseDescription',
     'instructorName',
     'instructorDesignation',
+    'category.name',
   ];
   const searchQuery = buildSearchQuery({
     searchTerm: options.searchTerm,
@@ -262,7 +263,7 @@ const getCourseListFromDb = async (
     ...(options.instructorDesignation && {
       instructorDesignation: options.instructorDesignation,
     }),
-    ...(options.rating !== undefined && { rating: Number(options.rating) }),
+    ...(options.rating !== undefined && { avgRating: Number(options.rating) }),
     ...(options.priceMin !== undefined && {
       price: { gte: Number(options.priceMin) },
     }),
@@ -290,6 +291,13 @@ const getCourseListFromDb = async (
     options.discountPriceMax,
   );
 
+  // Remove ratingQuery if already handled in filterFields
+  // const ratingQuery = buildNumericRangeQuery(
+  //   'rating',
+  //   options.rating,
+  //   options.rating,
+  // );
+
   // Combine all queries
   const whereQuery = combineQueries(
     // { userId }, // filter by userId if needed
@@ -297,6 +305,7 @@ const getCourseListFromDb = async (
     filterQuery,
     priceQuery,
     discountPriceQuery,
+    // ratingQuery, // Remove this line
   );
 
   // Sorting
@@ -376,11 +385,36 @@ const getCourseByIdFromDb = async (courseId: string) => {
     throw new AppError(httpStatus.NOT_FOUND, 'course not found');
   }
 
+  // Find similar courses in the same category, excluding the main one
+  const similarCourses = await prisma.course.findMany({
+    where: {
+      categoryId: result.categoryId,
+      id: { not: courseId },
+    },
+    select: {
+      id: true,
+      courseTitle: true,
+      courseShortDescription: true,
+      courseThumbnail: true,
+      price: true,
+      discountPrice: true,
+      instructorName: true,
+      totalSections: true,
+      totalLessons: true,
+      totalDuration: true,
+      avgRating: true,
+      totalRatings: true,
+      category: { select: { name: true } },
+    },
+    take: 5, // limit to 5 similar courses
+  });
+
   // Flatten category.name into the course object
   const { category, ...rest } = result;
   const formattedResult = {
     categoryName: category?.name ?? null,
     ...rest,
+    similarCourses,
   };
   return formattedResult;
 };
