@@ -33,12 +33,40 @@ const getEnrolledCourseList = catchAsync(async (req, res) => {
   });
 });
 
+const getEmployeesCourseList = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const result = await enrolledCourseService.getEmployeesCourseListFromDb(  
+    user.id,
+  );
+  sendResponse(res, { 
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'EnrolledCourse list retrieved successfully',
+    data: result,
+  });
+});
+
+const getEmployeesCourseById = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const enrolledId = req.params.id;
+  const result = await enrolledCourseService.getEmployeesCourseByIdFromDb(
+    user.id,
+    enrolledId,
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'EnrolledCourse details retrieved successfully',
+    data: result,
+  });
+});
+
 const getEnrolledCourseByStudentId = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const studentId = req.params.id;
+  const enrolledId = req.params.id;
   const result = await enrolledCourseService.getEnrolledCourseByStudentIdFromDb(
     user.id,
-    studentId,
+    enrolledId,
   );
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -87,16 +115,40 @@ const getMyEnrolledCourses = catchAsync(async (req, res) => {
 
 const getMyEnrolledCourseById = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await enrolledCourseService.getMyEnrolledCourseByIdFromDb(
-    user.id,
-    req.params.id,
-  );
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: 'EnrolledCourse details retrieved successfully',
-    data: result,
-  });
+
+  if (user.role === UserRoleEnum.STUDENT) {
+    const result = await enrolledCourseService.getMyEnrolledCourseByIdFromDb(
+      user.id,
+      req.params.id,
+    );
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: 'EnrolledCourse details retrieved successfully',
+      data: result,
+    });
+  }
+  if (user.role === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'Please complete your profile to proceed.',
+      );
+    }
+    const result = await enrolledCourseService.getMyEnrolledCourseByIdFromDbForEmployee(
+      user.id,
+      req.params.id,
+    );
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: 'EnrolledCourse details retrieved successfully',
+      data: result,
+    });
+  }
 });
 
 const updateEnrolledCourse = catchAsync(async (req, res) => {
@@ -131,7 +183,9 @@ const deleteEnrolledCourse = catchAsync(async (req, res) => {
 export const enrolledCourseController = {
   createEnrolledCourse,
   getEnrolledCourseList,
+  getEmployeesCourseList,
   getEnrolledCourseByStudentId,
+  getEmployeesCourseById,
   getMyEnrolledCourses,
   getMyEnrolledCourseById,
   updateEnrolledCourse,

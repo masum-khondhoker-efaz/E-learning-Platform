@@ -19,6 +19,16 @@ router.get(
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   enrolledCourseController.getEnrolledCourseList,
 );
+router.get(
+  '/employees',
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  enrolledCourseController.getEmployeesCourseList,
+);
+router.get(
+  '/employees/:id',
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  enrolledCourseController.getEmployeesCourseById,
+);
 
 router.get(
   '/students/:id',

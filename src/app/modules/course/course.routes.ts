@@ -23,6 +23,7 @@ router.get(
   auth(UserRoleEnum.STUDENT),
   courseController.getACourseById,
 );
+
 router.get('/', courseController.getCourseList);
 
 router.get('/:id', courseController.getCourseById);

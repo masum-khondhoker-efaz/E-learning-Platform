@@ -278,7 +278,7 @@ const changePassword = async (
   );
 
   if (!isCorrectPassword) {
-    throw new Error('Password incorrect!');
+    throw new AppError(httpStatus.BAD_REQUEST,'Password incorrect!');
   }
 
   const newPasswordSameAsOld: boolean = await bcrypt.compare(

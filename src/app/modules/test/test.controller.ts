@@ -25,6 +25,17 @@ const getTestList = catchAsync(async (req, res) => {
   });
 });
 
+const getTestForTaking = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const result = await testService.getTestForTakingFromDb(user.id, req.params.id);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Test for taking retrieved successfully',
+    data: result,
+  });
+});
+
 const getTestById = catchAsync(async (req, res) => {
   const user = req.user as any;
   const result = await testService.getTestByIdFromDb(user.id, req.params.id);
@@ -61,6 +72,7 @@ const deleteTest = catchAsync(async (req, res) => {
 export const testController = {
   createTest,
   getTestList,
+  getTestForTaking,
   getTestById,
   updateTest,
   deleteTest,

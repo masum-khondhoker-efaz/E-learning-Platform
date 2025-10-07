@@ -70,7 +70,7 @@ const updateCategoryIntoDb = async (userId: string, categoryId: string, data: an
     const result = await prisma.category.update({
       where:  {
         id: categoryId,
-        userId: userId,
+        // userId: userId,
     },
     data: {
       ...data,
@@ -106,7 +106,7 @@ const deleteCategoryItemFromDb = async (userId: string, categoryId: string) => {
     const deletedItem = await prisma.category.delete({
       where: {
       id: categoryId,
-      userId: userId,
+      // userId: userId,
     },
   });
   if (!deletedItem) {

@@ -174,7 +174,7 @@ model Course {
   courseTitle            String
   courseShortDescription String
   courseDescription      String
-  courseLevel            String
+  courseLevel            String?
   categoryId             String     @db.ObjectId
   certificate            Boolean    @default(false)
   lifetimeAccess         Boolean    @default(false)
@@ -203,7 +203,7 @@ model Course {
   user                User                  @relation(fields: [userId], references: [id])
   category            Category              @relation(fields: [categoryId], references: [id])
   Section             Section[]
-  Test                Test[]
+  // Test                Test[]
   EnrolledCourse      EnrolledCourse[]
   Payment             Payment[]
   Certificate         Certificate[]
@@ -226,13 +226,15 @@ model Section {
   order        Int
   totalLength  Float? // in hours
   totalLessons Int? // number of lessons in this section
+  testCount    Int? // number of tests in this section
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  Lesson       Lesson[]
 
   // Relationships
   course          Course            @relation(fields: [courseId], references: [id])
   StudentProgress StudentProgress[]
+  Lesson          Lesson[]
+  Test            Test[]
 
   @@unique([courseId, order])
   @@map("sections")
@@ -281,8 +283,9 @@ model StudentProgress {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   userId      String   @db.ObjectId
   courseId    String   @db.ObjectId
-  lessonId    String   @db.ObjectId
+  lessonId    String?   @db.ObjectId
   sectionId   String   @db.ObjectId
+  testId      String?  @db.ObjectId
   isCompleted Boolean  @default(false)
   // progress    Float    @default(0) // Percentage completed (0-100)
   // timeSpent   Int      @default(0) // Time spent in seconds
@@ -292,8 +295,9 @@ model StudentProgress {
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson  Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  lesson  Lesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  test    Test?   @relation(fields: [testId], references: [id], onDelete: Cascade)
   // @@index([lastViewed])
 
   @@unique([userId, lessonId])
@@ -444,10 +448,10 @@ model ContactUsInfo {
 model Test {
   id           String     @id @default(auto()) @map("_id") @db.ObjectId
   userId       String     @db.ObjectId
-  courseId     String     @db.ObjectId
+  sectionId    String?    @db.ObjectId
   title        String
   description  String?
-  passingScore Int        @default(60) // Percentage or absolute score
+  passingScore Int        @default(60)
   totalMarks   Int?       @default(100)
   timeLimit    Int? // Time limit in minutes
   isActive     Boolean    @default(true)
@@ -456,11 +460,12 @@ model Test {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  course      Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  TestAttempt TestAttempt[]
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section Section? @relation(fields: [sectionId], references: [id])
 
-  @@index([courseId])
+  TestAttempt     TestAttempt[]
+  StudentProgress StudentProgress[]
+
   @@index([isActive])
   @@index([isPublished])
   @@map("tests")

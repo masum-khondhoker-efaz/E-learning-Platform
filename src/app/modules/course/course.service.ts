@@ -17,8 +17,10 @@ import {
   combineQueries,
 } from '../../utils/searchFilter';
 
+
 const createCourseIntoDb = async (userId: string, data: any) => {
   return await prisma.$transaction(async tx => {
+    // Step 1: Prevent duplicates
     const existingCourse = await prisma.course.findMany({
       where: {
         OR: [
@@ -35,10 +37,10 @@ const createCourseIntoDb = async (userId: string, data: any) => {
       );
     }
 
-    // Step 1: Create course
+    // Step 2: Create the main course
     const course = await tx.course.create({
       data: {
-        userId: userId,
+        userId,
         courseTitle: data.courseTitle,
         courseShortDescription: data.courseShortDescription,
         courseDescription: data.courseDescription,
@@ -53,13 +55,11 @@ const createCourseIntoDb = async (userId: string, data: any) => {
         instructorDesignation: data.instructorDesignation,
         instructorDescription: data.instructorDescription,
         courseThumbnail: data.courseThumbnail,
-        // userId (if your schema actually has this field, since Course currently does not)
-        // userId: userId,
       },
     });
 
-    // Step 2: Loop sections and create them
-    if (data.sections && Array.isArray(data.sections)) {
+    // Step 3: Loop sections and create them
+    if (Array.isArray(data.sections)) {
       for (let sIndex = 0; sIndex < data.sections.length; sIndex++) {
         const section = data.sections[sIndex];
 
@@ -71,8 +71,8 @@ const createCourseIntoDb = async (userId: string, data: any) => {
           },
         });
 
-        // Step 3: Loop lessons for this section
-        if (section.lessons && Array.isArray(section.lessons)) {
+        // Step 4: Create lessons for this section
+        if (Array.isArray(section.lessons)) {
           for (let lIndex = 0; lIndex < section.lessons.length; lIndex++) {
             const lesson = section.lessons[lIndex];
 
@@ -80,34 +80,69 @@ const createCourseIntoDb = async (userId: string, data: any) => {
               data: {
                 sectionId: createdSection.id,
                 title: lesson.title,
-                content: lesson.content, // already mapped to uploaded file URL
+                content: lesson.content ?? null,
                 order: lesson.order ?? lIndex + 1,
-                videoDuration: lesson.videoDuration ?? null, // ✅ new
-                contentType: lesson.contentType ?? null, // ✅ new
+                videoDuration: lesson.videoDuration ?? null,
+                contentType: lesson.contentType ?? null,
               },
             });
           }
         }
+
+        // ✅ Step 5: Attach existing tests (by ID)
+        if (Array.isArray(section.tests) && section.tests.length > 0) {
+          for (const testRef of section.tests) {
+            // Check the test exists & not attached to another section
+            const existingTest = await tx.test.findUnique({
+              where: { id: testRef.testId },
+            });
+            if (!existingTest) {
+              throw new AppError(httpStatus.NOT_FOUND, 'Test not found');
+            }
+            if (existingTest.sectionId) {
+              throw new AppError(
+                httpStatus.BAD_REQUEST,
+                `Test ${existingTest.title} is already attached to another section`,
+              );
+            }
+            await tx.test.update({
+              where: { id: testRef.testId },
+              data: { sectionId: createdSection.id },
+            });
+          }
+
+          // Update testCount in this section
+          await tx.section.update({
+            where: { id: createdSection.id },
+            data: {
+              testCount: section.tests.length,
+            },
+          });
+        }
       }
     }
 
+    // Step 6: Calculate totals for the entire course
     const totalSections = await tx.section.count({
       where: { courseId: course.id },
     });
+
     const totalLessons = await tx.lesson.count({
       where: { section: { courseId: course.id } },
     });
 
-    // Calculate total duration in hours
-    // Make sure 'duration' exists in your Lesson model as a numeric field
+    const totalTests = await tx.test.count({
+      where: { section: { courseId: course.id } },
+    });
+
     const lessonAggregate = await tx.lesson.aggregate({
       where: { section: { courseId: course.id } },
       _sum: { videoDuration: true },
     });
+
     const totalDurationInMinutes = lessonAggregate?._sum?.videoDuration ?? 0;
     const totalDurationInHours = totalDurationInMinutes / 60;
 
-    // Step 4: Update course with totalSections, totalLessons, totalDuration
     await tx.course.update({
       where: { id: course.id },
       data: {
@@ -117,7 +152,7 @@ const createCourseIntoDb = async (userId: string, data: any) => {
       },
     });
 
-    // total lessons and total duration of sections also need to be updated in Section model
+    // Step 7: Update each section’s totals
     const sections = await tx.section.findMany({
       where: { courseId: course.id },
     });
@@ -127,10 +162,15 @@ const createCourseIntoDb = async (userId: string, data: any) => {
         where: { sectionId: section.id },
       });
 
+      const sectionTestCount = await tx.test.count({
+        where: { sectionId: section.id },
+      });
+
       const sectionLessonAggregate = await tx.lesson.aggregate({
         where: { sectionId: section.id },
         _sum: { videoDuration: true },
       });
+
       const sectionTotalDurationInMinutes =
         sectionLessonAggregate?._sum?.videoDuration ?? 0;
       const sectionTotalDurationInHours = sectionTotalDurationInMinutes / 60;
@@ -140,23 +180,27 @@ const createCourseIntoDb = async (userId: string, data: any) => {
         data: {
           totalLessons: sectionLessonCount,
           totalLength: sectionTotalDurationInHours,
+          testCount: sectionTestCount,
         },
       });
     }
 
-    // Return full course with nested sections + lessons
+    // Step 8: Return full course with nested sections, lessons & tests
     return await tx.course.findUnique({
       where: { id: course.id },
       include: {
         Section: {
           include: {
             Lesson: true,
+            Test: true,
           },
         },
       },
     });
   });
 };
+
+
 
 const getACourseByIdFromDb = async (userId: string, courseId: string) => {
 
@@ -187,6 +231,7 @@ const getACourseByIdFromDb = async (userId: string, courseId: string) => {
             select: { title: true, order: true },
             orderBy: { order: 'asc' },
           },
+          Test: { select: { id: true, title: true }  } 
         },
         orderBy: {
           order: 'asc',
@@ -334,6 +379,8 @@ const getCourseListFromDb = async (
     },
   });
 
+  console.log("courses");
+
   // Flatten category.name into the course object
   const result = courses.map(course => {
     const { category, ...rest } = course;
@@ -363,6 +410,7 @@ const getCourseByIdFromDb = async (courseId: string) => {
             select: { title: true, order: true },
             orderBy: { order: 'asc' },
           },
+          Test: { select: { id: true, title: true }  } ,
         },
         orderBy: {
           order: 'asc',
@@ -419,18 +467,19 @@ const getCourseByIdFromDb = async (courseId: string) => {
   return formattedResult;
 };
 
+
 const updateCourseIntoDb = async (
   courseId: string,
   userId: string,
   data: any,
 ) => {
   return await prisma.$transaction(async tx => {
-    // 1. Check if course exists and belongs to user
+    // 1. Validate ownership
     const existingCourse = await tx.course.findFirst({
       where: { id: courseId, userId },
       include: {
         Section: {
-          include: { Lesson: true },
+          include: { Lesson: true, Test: true },
           orderBy: { order: 'asc' },
         },
       },
@@ -440,7 +489,7 @@ const updateCourseIntoDb = async (
       throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
     }
 
-    // 2. Check duplicate course title/description
+    // 2. Prevent duplicate course data
     const duplicateCourse = await tx.course.findFirst({
       where: {
         id: { not: courseId },
@@ -451,7 +500,6 @@ const updateCourseIntoDb = async (
         ],
       },
     });
-
     if (duplicateCourse) {
       throw new AppError(
         httpStatus.BAD_REQUEST,
@@ -459,61 +507,53 @@ const updateCourseIntoDb = async (
       );
     }
 
-    // 3. Update basic course info
-    const updatedCourse = await tx.course.update({
+    // 3. Update main course info
+    await tx.course.update({
       where: { id: courseId },
       data: {
-        ...(data.courseTitle !== undefined && { courseTitle: data.courseTitle }),
-        ...(data.courseShortDescription !== undefined && {
+        ...(data.courseTitle && { courseTitle: data.courseTitle }),
+        ...(data.courseShortDescription && {
           courseShortDescription: data.courseShortDescription,
         }),
-        ...(data.courseDescription !== undefined && {
-          courseDescription: data.courseDescription,
-        }),
-        ...(data.courseLevel !== undefined && { courseLevel: data.courseLevel }),
-        ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
+        ...(data.courseDescription && { courseDescription: data.courseDescription }),
+        ...(data.courseLevel && { courseLevel: data.courseLevel }),
+        ...(data.categoryId && { categoryId: data.categoryId }),
         ...(data.certificate !== undefined && { certificate: data.certificate }),
         ...(data.lifetimeAccess !== undefined && {
           lifetimeAccess: data.lifetimeAccess,
         }),
-        ...(data.price !== undefined && { price: data.price }),
+        ...(data.price && { price: data.price }),
         ...(data.discountPrice !== undefined && {
           discountPrice: data.discountPrice,
         }),
-        ...(data.instructorName !== undefined && {
-          instructorName: data.instructorName,
-        }),
-        ...(data.instructorImage !== undefined && {
-          instructorImage: data.instructorImage,
-        }),
-        ...(data.instructorDesignation !== undefined && {
+        ...(data.instructorName && { instructorName: data.instructorName }),
+        ...(data.instructorImage && { instructorImage: data.instructorImage }),
+        ...(data.instructorDesignation && {
           instructorDesignation: data.instructorDesignation,
         }),
-        ...(data.instructorDescription !== undefined && {
+        ...(data.instructorDescription && {
           instructorDescription: data.instructorDescription,
         }),
-        ...(data.courseThumbnail !== undefined && {
-          courseThumbnail: data.courseThumbnail,
-        }),
+        ...(data.courseThumbnail && { courseThumbnail: data.courseThumbnail }),
         lastUpdated: new Date(),
       },
     });
 
     // 4. Handle sections & lessons
+    let totalSections = 0;
     let totalLessons = 0;
     let totalDurationSeconds = 0;
-    let totalSections = 0;
 
-    if (data.sections && Array.isArray(data.sections)) {
+    if (Array.isArray(data.sections)) {
       const existingSections = existingCourse.Section;
       const existingLessons = existingSections.flatMap(s => s.Lesson);
 
-      // Temp reorder to avoid constraint errors
+      // Temporarily reorder sections to avoid conflicts
       await Promise.all(
-        existingSections.map((section, index) =>
+        existingSections.map((s, i) =>
           tx.section.update({
-            where: { id: section.id },
-            data: { order: 10000 + index },
+            where: { id: s.id },
+            data: { order: 10000 + i },
           }),
         ),
       );
@@ -525,10 +565,14 @@ const updateCourseIntoDb = async (
         const sectionData = data.sections[sIndex];
         let sectionId = sectionData.id;
 
+        // Create or update section
         if (sectionId) {
           await tx.section.update({
             where: { id: sectionId },
-            data: { title: sectionData.title, order: sIndex + 1 },
+            data: {
+              title: sectionData.title,
+              order: sIndex + 1,
+            },
           });
           sectionsToKeep.push(sectionId);
         } else {
@@ -545,15 +589,17 @@ const updateCourseIntoDb = async (
 
         totalSections++;
 
-        // Lessons in section
-        if (sectionData.lessons && Array.isArray(sectionData.lessons)) {
-          const sectionLessons = existingLessons.filter(l => l.sectionId === sectionId);
+        // ===== LESSON HANDLING =====
+        if (Array.isArray(sectionData.lessons)) {
+          const sectionLessons = existingLessons.filter(
+            l => l.sectionId === sectionId,
+          );
 
           await Promise.all(
-            sectionLessons.map((lesson, index) =>
+            sectionLessons.map((l, i) =>
               tx.lesson.update({
-                where: { id: lesson.id },
-                data: { order: 10000 + index },
+                where: { id: l.id },
+                data: { order: 10000 + i },
               }),
             ),
           );
@@ -564,7 +610,6 @@ const updateCourseIntoDb = async (
 
             if (lessonId) {
               const existingLesson = existingLessons.find(l => l.id === lessonId);
-
               if (existingLesson && lessonData.content !== existingLesson.content) {
                 await deleteFileFromSpace(existingLesson.content);
               }
@@ -575,12 +620,12 @@ const updateCourseIntoDb = async (
                   title: lessonData.title,
                   content: lessonData.content,
                   order: lIndex + 1,
-                  videoDuration: lessonData.duration || existingLesson?.videoDuration || 0,
+                  videoDuration: lessonData.videoDuration ?? existingLesson?.videoDuration ?? 0,
                 },
               });
               lessonsToKeep.push(lessonId);
               totalLessons++;
-              totalDurationSeconds += lessonData.duration || 0;
+              totalDurationSeconds += lessonData.videoDuration ?? 0;
             } else {
               const newLesson = await tx.lesson.create({
                 data: {
@@ -588,12 +633,12 @@ const updateCourseIntoDb = async (
                   title: lessonData.title,
                   content: lessonData.content,
                   order: lIndex + 1,
-                  videoDuration: lessonData.videoDuration || 0,
+                  videoDuration: lessonData.videoDuration ?? 0,
                 },
               });
               lessonsToKeep.push(newLesson.id);
               totalLessons++;
-              totalDurationSeconds += lessonData.duration || 0;
+              totalDurationSeconds += lessonData.videoDuration ?? 0;
             }
           }
 
@@ -606,44 +651,71 @@ const updateCourseIntoDb = async (
             await tx.lesson.delete({ where: { id: lesson.id } });
           }
         }
+
+        // ===== TEST HANDLING =====
+        if (Array.isArray(sectionData.tests)) {
+          // Unlink tests from other sections and attach here
+          for (const testRef of sectionData.tests) {
+            await tx.test.update({
+              where: { id: testRef.testId },
+              data: { sectionId },
+            });
+          }
+
+          const testCount = sectionData.tests.length;
+          await tx.section.update({
+            where: { id: sectionId },
+            data: { testCount },
+          });
+        }
       }
 
-      // Delete removed sections
+      // Delete removed sections (and related lessons)
       const sectionsToDelete = existingSections.filter(
         s => !sectionsToKeep.includes(s.id),
       );
+
       for (const section of sectionsToDelete) {
-        const sectionLessons = existingLessons.filter(l => l.sectionId === section.id);
+        const sectionLessons = existingLessons.filter(
+          l => l.sectionId === section.id,
+        );
         for (const lesson of sectionLessons) {
           if (lesson.content) await deleteFileFromSpace(lesson.content);
         }
+
         await tx.lesson.deleteMany({ where: { sectionId: section.id } });
+        await tx.test.updateMany({
+          where: { sectionId: section.id },
+          data: { sectionId: null },
+        });
         await tx.section.delete({ where: { id: section.id } });
       }
     }
 
-    // 5. Update aggregate stats
+    // 5. Update aggregates
     await tx.course.update({
       where: { id: courseId },
       data: {
         totalSections,
         totalLessons,
-        totalDuration: totalDurationSeconds / 3600, // store in hours
+        totalDuration: totalDurationSeconds / 3600, // hours
       },
     });
 
-    // 6. Return updated course
+    // 6. Return updated full course with tests
     return await tx.course.findUnique({
       where: { id: courseId },
       include: {
         Section: {
-          include: { Lesson: true },
+          include: { Lesson: true, Test: true },
           orderBy: { order: 'asc' },
         },
       },
     });
   });
 };
+
+
 
 // Helper function to get course by ID
 const getCourseById = async (courseId: string) => {

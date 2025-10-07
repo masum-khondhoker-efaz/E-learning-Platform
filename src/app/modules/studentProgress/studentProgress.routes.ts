@@ -9,8 +9,15 @@ const router = express.Router();
 
 router.post(
   '/lessons',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  validateRequest(studentProgressValidation.markLessonCompletedSchema),
   studentProgressController.markLessonCompleted,
+);
+router.post(
+  '/tests',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  validateRequest(studentProgressValidation.markTestCompletedSchema),
+  studentProgressController.markTestCompleted,
 );
 
 // router.post(
@@ -18,6 +25,12 @@ router.post(
 //   auth(UserRoleEnum.STUDENT),
 //   studentProgressController.markLessonIncomplete,
 // );
+
+router.get(
+  '/lesson-materials/:id',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  studentProgressController.getALessonMaterialById,
+);
 
 router.get(
   '/course-details/:id',

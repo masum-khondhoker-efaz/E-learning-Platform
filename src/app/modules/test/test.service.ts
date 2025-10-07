@@ -1,5 +1,5 @@
 import prisma from '../../utils/prisma';
-import { QuestionType, UserRoleEnum, UserStatus } from '@prisma/client';
+import { AttemptStatus, QuestionType, UserRoleEnum, UserStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { ITest } from './test.interface';
@@ -8,7 +8,7 @@ const createTestIntoDb = async (userId: string, data: ITest) => {
   const findExistingTest = await prisma.test.findFirst({
     where: {
       title: data.title,
-      courseId: data.courseId,
+      // courseId: data.courseId,
       userId: userId,
     },
   });
@@ -44,7 +44,7 @@ const createTestIntoDb = async (userId: string, data: ITest) => {
     const test = await tx.test.create({
       data: {
         userId: userId,
-        courseId: data.courseId,
+        // courseId: data.courseId,
         title: data.title,
         description: data.description ? data.description : null,
         passingScore: data.passingScore,
@@ -171,6 +171,71 @@ const getTestListFromDb = async (userId: string) => {
   return result;
 };
 
+const getTestForTakingFromDb = async (userId: string, testId: string) => {
+  // 1. Fetch the test with section (or course if attached directly)
+  const test = await prisma.test.findUnique({
+    where: { id: testId },
+    include: {
+      section: { include: { course: true } }, 
+      questions: {
+        include: {
+          options: true,
+        },
+        orderBy: { order: 'asc' },
+      },
+    },
+  });
+
+  if (!test ) { // || !test.isPublished
+    throw new AppError(httpStatus.NOT_FOUND, 'Test not found or unpublished');
+  }
+
+  // 2. Get courseId
+  const courseId = test.section?.courseId;
+
+  // 3. Get all previous tests for the course (ordered by createdAt or order)
+  const previousTests = await prisma.test.findMany({
+    where: {
+      sectionId: test.sectionId,
+      createdAt: { lt: test.createdAt }, // tests created before this test
+      isPublished: true,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+
+  if (previousTests.length > 0) {
+    const previousTestIds = previousTests.map((t) => t.id);
+
+    // 4. Check if user has attempted all previous tests
+    const attemptedTests = await prisma.testAttempt.findMany({
+      where: {
+        userId,
+        testId: { in: previousTestIds },
+        status: AttemptStatus.SUBMITTED,
+      },
+      select: { testId: true },
+    });
+
+    const attemptedTestIds = attemptedTests.map((t) => t.testId);
+
+    const notAttempted = previousTestIds.filter(
+      (id) => !attemptedTestIds.includes(id),
+    );
+
+    if (notAttempted.length > 0) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'You must complete all previous tests in this course before attempting this one',
+      );
+    }
+  }
+
+  // 5. Return the test with questions
+  return test;
+};
+
+
 const getTestByIdFromDb = async (userId: string, testId: string) => {
   const result = await prisma.test.findUnique({
     where: {
@@ -222,7 +287,7 @@ const updateTestIntoDb = async (userId: string, testId: string, data: any) => {
       const duplicateTest = await tx.test.findFirst({
         where: {
           title: data.title,
-          courseId: existingTest.courseId,
+          // courseId: existingTest.courseId,
           userId: userId,
           id: { not: testId },
         },
@@ -495,6 +560,7 @@ const deleteTestItemFromDb = async (userId: string, testId: string) => {
 export const testService = {
   createTestIntoDb,
   getTestListFromDb,
+  getTestForTakingFromDb,
   getTestByIdFromDb,
   updateTestIntoDb,
   deleteTestItemFromDb,

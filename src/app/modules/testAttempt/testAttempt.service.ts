@@ -44,17 +44,34 @@ const submitTestAttemptIntoDb = async (userId: string, data: any) => {
     //Get courseId from testId
     const testDetails = await tx.test.findUnique({
       where: { id: data.testId },
-      select: { courseId: true },
+     include: { section: { select: { courseId: true } } },
     });
     if (!testDetails) {
       throw new AppError(httpStatus.NOT_FOUND, 'Test not found');
+    }
+    if(!testDetails.section?.courseId){
+      throw new AppError(httpStatus.NOT_FOUND, 'Test is not associated with any course');
+    }
+
+    // check already attempted or not
+    const alreadyAttempted = await tx.testAttempt.findFirst({
+      where: {
+        testId: data.testId,
+        userId: userId,
+      },
+    });
+    if (alreadyAttempted) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'You have already submitted this test',
+      );
     }
 
     //enrollment check
     const studentCheck = await tx.enrolledCourse.findFirst({
       where: {
         userId: userId,
-        courseId: testDetails.courseId,
+        courseId: testDetails.section!.courseId,
         paymentStatus: PaymentStatus.COMPLETED,
       },
     });
@@ -272,7 +289,7 @@ const getTestAttemptByIdFromDb = async (
           title: true,
           totalMarks: true,
           passingScore: true,
-          courseId: true,
+          section: { select: { courseId: true }},
         },
       },
     },
@@ -454,7 +471,7 @@ const getMyTestAttemptsFromDb = async (userId: string) => {
           title: true,
           totalMarks: true,
           passingScore: true,
-          courseId: true,
+          section: { select: { courseId: true }}
         },
       },
     },
@@ -507,7 +524,7 @@ const getMyTestAttemptByIdFromDb = async (
           title: true,
           totalMarks: true,
           passingScore: true,
-          courseId: true,
+          section: { select: { courseId: true }},
         },
       },
     },

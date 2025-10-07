@@ -37,6 +37,51 @@ const markLessonCompleted = catchAsync(async (req, res) => {
   });
 });
 
+const markTestCompleted = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const userRole = user.role;
+  if (userRole === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {
+      throw new AppError( 
+        httpStatus.FORBIDDEN,
+        'Please complete your profile to proceed.',
+      );
+    }
+  }
+
+  const result = await studentProgressService.markTestCompleted(
+    user.id,
+    req.body.testId,
+    userRole
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Test marked as completed',
+    data: result,
+  });
+});
+
+const getALessonMaterialById = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const userRole = user.role;
+  const lessonMaterialId = req.params.id;
+  const result = await studentProgressService.getALessonMaterialByIdFromDb(
+    user.id,
+    lessonMaterialId,
+    userRole
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Lesson material retrieved successfully',
+    data: result,
+  });
+});
+
 const markLessonIncomplete = catchAsync(async (req, res) => {
   const user = req.user as any;
   const lessonId = req.params.id;
@@ -131,6 +176,8 @@ const getCourseCompletion = catchAsync(async (req, res) => {
 
 export const studentProgressController = {
   markLessonCompleted,
+  markTestCompleted,
+  getALessonMaterialById,
   markLessonIncomplete,
   getACourseDetails,
   getMyCoursesProgress,

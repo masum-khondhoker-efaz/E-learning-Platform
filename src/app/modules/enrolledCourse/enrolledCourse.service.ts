@@ -55,7 +55,16 @@ const getEnrolledCourseListFromDb = async (userId: string) => {
       courseId: true,
       paymentStatus: true,
       enrolledAt: true,
-      user: { select: { id: true, fullName: true, email: true, image: true } },
+      invoiceId: true,
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          image: true,
+          phoneNumber: true,
+        },
+      },
       course: { select: { id: true, courseTitle: true, price: true } },
     },
   });
@@ -68,46 +77,141 @@ const getEnrolledCourseListFromDb = async (userId: string) => {
     courseId: enrolled.courseId,
     paymentStatus: enrolled.paymentStatus,
     enrolledAt: enrolled.enrolledAt,
+    invoiceId: enrolled.invoiceId,
     userId: enrolled.user?.id,
     userFullName: enrolled.user?.fullName,
     userEmail: enrolled.user?.email,
+    userPhoneNumber: enrolled.user?.phoneNumber,
     userImage: enrolled.user?.image,
     courseTitle: enrolled.course?.courseTitle,
     coursePrice: enrolled.course?.price,
   }));
 };
 
+const getEmployeesCourseListFromDb = async (userId: string) => {
+  const result = await prisma.employeeCredential.findMany({
+    where: { paymentStatus: PaymentStatus.COMPLETED },
+    select: {
+      id: true,
+      paymentStatus: true,
+      sentAt: true,
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          image: true,
+          phoneNumber: true,
+        },
+      },
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          price: true,
+        },
+      },
+    },
+  });
+  if (result.length === 0) {
+    return { message: 'No enrolledCourse found for employees' };
+  }
+  return result.map(credential => ({
+    id: credential.id,
+    courseId: credential.course?.id,
+    courseTitle: credential.course?.courseTitle,
+    coursePrice: credential.course?.price,
+    paymentStatus: credential.paymentStatus,
+    enrolledAt: credential.sentAt,
+    userId: credential.user?.id,
+    userFullName: credential.user?.fullName,
+    userEmail: credential.user?.email,
+    userImage: credential.user?.image,
+    userPhoneNumber: credential.user?.phoneNumber,
+  }));
+};
+
+const getEmployeesCourseByIdFromDb = async (
+  userId: string,
+  enrolledId: string,
+) => {
+  const result = await prisma.employeeCredential.findUnique({
+    where: { id: enrolledId, paymentStatus: PaymentStatus.COMPLETED },
+    select: {
+      id: true,
+      courseId: true,
+      paymentStatus: true,
+      sentAt: true,
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          image: true,
+          phoneNumber: true,
+        },
+      },
+      course: { select: { id: true, courseTitle: true, price: true } },
+    },
+  });
+  if (!result) {
+    return { message: 'No enrolledCourse found for this employee' };
+  }
+  return {
+    id: result.id,
+    courseId: result.courseId,
+    paymentStatus: result.paymentStatus,
+    enrolledAt: result.sentAt,
+    userId: result.user?.id,
+    userFullName: result.user?.fullName,
+    userEmail: result.user?.email,
+    userImage: result.user?.image,
+    userPhoneNumber: result.user?.phoneNumber,
+    courseTitle: result.course?.courseTitle,
+    coursePrice: result.course?.price,
+  };
+};
+
 const getEnrolledCourseByStudentIdFromDb = async (
   userId: string,
-  studentId: string,
+  enrolledId: string,
 ) => {
-  const result = await prisma.enrolledCourse.findMany({
-    where: { userId: studentId, paymentStatus: PaymentStatus.COMPLETED },
+  const result = await prisma.enrolledCourse.findUnique({
+    where: { id: enrolledId, paymentStatus: PaymentStatus.COMPLETED },
     select: {
       id: true,
       courseId: true,
       paymentStatus: true,
       enrolledAt: true,
-      user: { select: { id: true, fullName: true, email: true, image: true } },
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          image: true,
+          phoneNumber: true,
+        },
+      },
       course: { select: { id: true, courseTitle: true, price: true } },
     },
   });
-  if (result.length === 0) {
+  if (!result) {
     return { message: 'No enrolledCourse found for this student' };
   }
 
-  return result.map(enrolled => ({
-    id: enrolled.id,
-    courseId: enrolled.courseId,
-    paymentStatus: enrolled.paymentStatus,
-    enrolledAt: enrolled.enrolledAt,
-    userId: enrolled.user?.id,
-    userFullName: enrolled.user?.fullName,
-    userEmail: enrolled.user?.email,
-    userImage: enrolled.user?.image,
-    courseTitle: enrolled.course?.courseTitle,
-    coursePrice: enrolled.course?.price,
-  }));
+  return {
+    id: result.id,
+    courseId: result.courseId,
+    paymentStatus: result.paymentStatus,
+    enrolledAt: result.enrolledAt,
+    userId: result.user?.id,
+    userFullName: result.user?.fullName,
+    userEmail: result.user?.email,
+    userImage: result.user?.image,
+    userPhoneNumber: result.user?.phoneNumber,
+    courseTitle: result.course?.courseTitle,
+    coursePrice: result.course?.price,
+  };
 };
 
 const getMyEnrolledCoursesFromDb = async (userId: string) => {
@@ -126,8 +230,9 @@ const getMyEnrolledCoursesFromDb = async (userId: string) => {
     return { message: 'No enrolledCourse found for this student' };
   }
 
-  const courseProgressList = await studentProgressService.getAllCourseProgress(userId);
-  const progressMap = new Map<string, typeof courseProgressList[number]>();
+  const courseProgressList =
+    await studentProgressService.getAllCourseProgress(userId);
+  const progressMap = new Map<string, (typeof courseProgressList)[number]>();
   courseProgressList.forEach(progress => {
     progressMap.set(progress.courseId, progress);
   });
@@ -185,7 +290,54 @@ const getMyEnrolledCourseByIdFromDb = async (
     where: {
       courseId: enrolledCourseId,
       userId: userId,
-      // paymentStatus: PaymentStatus.COMPLETED,
+      paymentStatus: PaymentStatus.COMPLETED,
+    },
+    include: {
+      course: {
+        include: {
+          Section: {
+            include: {
+              Lesson: true,
+              Test: { select: { id: true, title: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!result) {
+    throw new AppError(httpStatus.NOT_FOUND, 'enrolledCourse not found');
+  }
+  return result;
+};
+
+const getMyEnrolledCourseByIdFromDbForEmployee = async (
+  userId: string,
+  enrolledCourseId: string,
+) => {
+  const result = await prisma.employeeCredential.findFirst({
+    where: {
+      courseId: enrolledCourseId,
+      userId: userId,
+      paymentStatus: PaymentStatus.COMPLETED,
+    },
+    select: {
+      userId: true,
+      paymentStatus: true,
+      courseId: true,
+      progress: true,
+      isCompleted: true,
+      sentAt: true,
+      course: {
+        include: {
+          Section: {
+            include: {
+              Lesson: true,
+              Test: { select: { id: true, title: true } },
+            },
+          },
+        },
+      },
     },
   });
   if (!result) {
@@ -234,10 +386,13 @@ const deleteEnrolledCourseItemFromDb = async (
 export const enrolledCourseService = {
   createEnrolledCourseIntoDb,
   getEnrolledCourseListFromDb,
+  getEmployeesCourseListFromDb,
   getEnrolledCourseByStudentIdFromDb,
+  getEmployeesCourseByIdFromDb,
   getMyEnrolledCoursesForEmployeeFromDb,
   getMyEnrolledCoursesFromDb,
   getMyEnrolledCourseByIdFromDb,
+  getMyEnrolledCourseByIdFromDbForEmployee,
   updateEnrolledCourseIntoDb,
   deleteEnrolledCourseItemFromDb,
 };

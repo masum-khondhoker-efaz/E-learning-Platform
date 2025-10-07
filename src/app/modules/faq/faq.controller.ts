@@ -17,24 +17,14 @@ const createFaq = catchAsync(async (req, res) => {
 
 const getFaqList = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const filters = pickValidFields(req.query, [
-      'page',
-      'limit',
-      'sortBy',
-      'sortOrder',
-      'searchTerm',
-      'status',
-      'question',
-      'answer',
-    ]);
+ 
   
-  const result = await faqService.getFaqListFromDb(filters);
+  const result = await faqService.getFaqListFromDb();
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Faq list retrieved successfully',
-    data: result.data,
-    meta: result.meta,
+    data: result,
   });
 });
 

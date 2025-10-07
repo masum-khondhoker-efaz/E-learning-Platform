@@ -1,12 +1,18 @@
+import { test } from 'node:test';
 import { z } from 'zod';
 
-const createSchema = z.object({
+const markTestCompletedSchema = z.object({
   body: z.object({
-    name: z.string().min(1, 'Name is required'),
-    description: z.string().optional(),
-    }),
+    testId: z.string({ required_error: 'Test ID is required' }),
+  }),
+});
+const markLessonCompletedSchema = z.object({
+  body: z.object({
+    lessonId: z.string({ required_error: 'Lesson ID is required' })
+  })
 });
 
+    
 const updateSchema = z.object({
   body: z.object({
     name: z.string().optional(),
@@ -15,6 +21,7 @@ const updateSchema = z.object({
 });
 
 export const studentProgressValidation = {
-createSchema,
-updateSchema,
+  markTestCompletedSchema,
+  markLessonCompletedSchema,
+  updateSchema,
 };

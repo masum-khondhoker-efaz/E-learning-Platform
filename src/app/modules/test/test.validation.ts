@@ -34,7 +34,7 @@ const questionSchema = z.object({
 // ------------------- Test -------------------
 const createTestSchema = z.object({
   body: z.object({
-    courseId: z.string().min(1, 'Course ID is required'),
+    // courseId: z.string().min(1, 'Course ID is required'),
     title: z.string().min(1, 'Test title is required'),
     description: z.string().optional(),
     passingScore: z.number().default(60),

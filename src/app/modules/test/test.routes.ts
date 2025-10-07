@@ -14,9 +14,23 @@ router.post(
   testController.createTest,
 );
 
-router.get('/', auth(), testController.getTestList);
+router.get(
+  '/',
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  testController.getTestList,
+);
 
-router.get('/:id', auth(), testController.getTestById);
+router.get(
+  '/attempt/:id',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  testController.getTestForTaking,
+);
+
+router.get(
+  '/:id',
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  testController.getTestById,
+);
 
 router.patch(
   '/:id',

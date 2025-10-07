@@ -28,7 +28,7 @@ export interface IQuestion {
 }
 
 export interface ITest {
-    courseId: string;
+    // courseId: string;
     title: string;
     description?: string;
     passingScore?: number;
@@ -40,7 +40,7 @@ export interface ITest {
 }
 
 export interface ITestUpdate {
-    courseId?: string;
+    // courseId?: string;
     title?: string;
     description?: string;
     passingScore?: number;
