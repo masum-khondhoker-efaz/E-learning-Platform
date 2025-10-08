@@ -55,6 +55,7 @@ model User {
   ContactUsInfo      ContactUsInfo[]
   FavoriteCourse     FavoriteCourse[]
   InPersonTraining   InPersonTraining[]
+  CertificateContent CertificateContent[]
 
   @@map("users")
 }
@@ -215,6 +216,7 @@ model Course {
   FavoriteCourse      FavoriteCourse[]
   InPersonTraining    InPersonTraining[]
   CheckoutItem        CheckoutItem[]
+  CertificateContent  CertificateContent[]
 
   @@map("courses")
 }
@@ -283,7 +285,7 @@ model StudentProgress {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   userId      String   @db.ObjectId
   courseId    String   @db.ObjectId
-  lessonId    String?   @db.ObjectId
+  lessonId    String?  @db.ObjectId
   sectionId   String   @db.ObjectId
   testId      String?  @db.ObjectId
   isCompleted Boolean  @default(false)
@@ -295,7 +297,7 @@ model StudentProgress {
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson  Lesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  lesson  Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   test    Test?   @relation(fields: [testId], references: [id], onDelete: Cascade)
   // @@index([lastViewed])
@@ -573,22 +575,43 @@ model UserResponse {
 }
 
 model Certificate {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId         String?  @db.ObjectId // for individual user purchases
-  employeeCredId String?  @db.ObjectId // for company-generated credentials
-  companyId      String?  @db.ObjectId
-  courseId       String   @db.ObjectId
-  certificateId  String   @unique
-  issueDate      DateTime @default(now())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String?  @db.ObjectId // for individual user purchases
+  employeeCredId       String?  @db.ObjectId // for company-generated credentials
+  certificateContentId String   @db.ObjectId
+  companyId            String?  @db.ObjectId
+  courseId             String   @db.ObjectId
+  certificateId        String   @unique
+  issueDate            DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  user         User?               @relation(fields: [userId], references: [id])
-  employeeCred EmployeeCredential? @relation(fields: [employeeCredId], references: [id])
-  company      Company?            @relation(fields: [companyId], references: [id])
-  course       Course              @relation(fields: [courseId], references: [id])
+  user               User?               @relation(fields: [userId], references: [id])
+  employeeCred       EmployeeCredential? @relation(fields: [employeeCredId], references: [id])
+  company            Company?            @relation(fields: [companyId], references: [id])
+  course             Course              @relation(fields: [courseId], references: [id])
+  certificateContent CertificateContent  @relation(fields: [certificateContentId], references: [id])
 
   @@map("certificates")
+}
+
+model CertificateContent {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String   @db.ObjectId // creator (admin/instructor)
+  courseId     String   @unique @db.ObjectId
+  title        String // e.g. "Standard Completion Certificate"
+  htmlContent  String // full certificate HTML with placeholders
+  placeholders String[] // e.g. ["{{fullName}}", "{{dob}}", "{{startDate}}", "{{endDate}}", "{{certificateNumber}}"]
+  mainContents Json? // e.g. { "fullName": "John Doe", "dob": "1990-01-01", "startDate": "2023-01-01", "endDate": "2023-03-01", "certificateNumber": "CERT123456" }
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id])
+  course      Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  Certificate Certificate[]
+
+  @@map("certificate_contents")
 }
 
 model Support {

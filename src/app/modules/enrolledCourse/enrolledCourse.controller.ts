@@ -5,6 +5,7 @@ import { enrolledCourseService } from './enrolledCourse.service';
 import { UserRoleEnum } from '@prisma/client';
 import prisma from '../../utils/prisma';
 import AppError from '../../errors/AppError';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 const createEnrolledCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -21,28 +22,32 @@ const createEnrolledCourse = catchAsync(async (req, res) => {
 });
 
 const getEnrolledCourseList = catchAsync(async (req, res) => {
-  const user = req.user as any;
+  const  user  = req.user as any;
   const result = await enrolledCourseService.getEnrolledCourseListFromDb(
-    user.id,
+    user.id, 
+    req.query as ISearchAndFilterOptions
   );
+  
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'EnrolledCourse list retrieved successfully',
-    data: result,
+    message: 'Enrolled courses retrieved successfully',
+    data: result.data,
+    meta: result.meta,
   });
 });
 
 const getEmployeesCourseList = catchAsync(async (req, res) => {
-  const user = req.user as any;
-  const result = await enrolledCourseService.getEmployeesCourseListFromDb(  
-    user.id,
+  const result = await enrolledCourseService.getEmployeesCourseListFromDb(
+    req.query as ISearchAndFilterOptions
   );
-  sendResponse(res, { 
+  
+  sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'EnrolledCourse list retrieved successfully',
-    data: result,
+    message: 'Employee courses retrieved successfully',
+    data: result.data,
+    meta: result.meta,
   });
 });
 
@@ -151,6 +156,55 @@ const getMyEnrolledCourseById = catchAsync(async (req, res) => {
   }
 });
 
+const getMyOrders = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const userRole = user.role;
+  if (userRole === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {  
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'Please complete your profile to proceed.',
+      );
+    }
+  }
+  const result = await enrolledCourseService.getMyOrdersFromDb(user.id, userRole);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,  
+    message: 'My orders retrieved successfully',
+    data: result,
+  });
+});
+
+const getMyLearningHistory = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const userRole = user.role;
+  if (userRole === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {  
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'Please complete your profile to proceed.',
+      );
+    }
+  }
+  const result = await enrolledCourseService.getMyLearningHistoryFromDb(
+    user.id,
+    userRole,
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'My learning history retrieved successfully',
+    data: result,
+  });
+});
+
 const updateEnrolledCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
   const result = await enrolledCourseService.updateEnrolledCourseIntoDb(
@@ -188,6 +242,8 @@ export const enrolledCourseController = {
   getEmployeesCourseById,
   getMyEnrolledCourses,
   getMyEnrolledCourseById,
+  getMyOrders,
+  getMyLearningHistory,
   updateEnrolledCourse,
   deleteEnrolledCourse,
 };

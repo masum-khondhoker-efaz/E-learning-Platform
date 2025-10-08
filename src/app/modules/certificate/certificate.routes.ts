@@ -7,11 +7,7 @@ import { UserRoleEnum } from '@prisma/client';
 
 const router = express.Router();
 
-router.post(
-  '/courses',
-  auth(),
-  certificateController.issueCertificate,
-);
+router.post('/courses', auth(), certificateController.issueCertificate);
 
 router.get(
   '/all-issued-certificates',
@@ -27,18 +23,11 @@ router.get(
 
 router.get(
   '/completion-check/:id',
-  auth(),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
   certificateController.checkCompletion,
 );
 router.get('/my-certificates', auth(), certificateController.getMyCertificates);
-router.get(
-  '/:id',
-  auth(),
-  certificateController.getCertificate,
-);
-router.get(
-  '/certificates/:id/verify',
-  certificateController.verifyCertificate,
-);
+router.get('/my-certificates/:id', auth(), certificateController.getCertificate);
+router.get('/certificates/:id/verify', certificateController.verifyCertificate);
 
 export const certificateRoutes = router;

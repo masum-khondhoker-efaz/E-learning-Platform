@@ -5,6 +5,7 @@ import { inPersonTrainingService } from './inPersonTraining.service';
 import { UserRoleEnum } from '@prisma/client';
 import prisma from '../../utils/prisma';
 import AppError from '../../errors/AppError';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 const createInPersonTraining = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -36,12 +37,14 @@ const getInPersonTrainingList = catchAsync(async (req, res) => {
   const user = req.user as any;
   const result = await inPersonTrainingService.getInPersonTrainingListFromDb(
     user.id,
+    req.query as ISearchAndFilterOptions
   );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'InPersonTraining list retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 

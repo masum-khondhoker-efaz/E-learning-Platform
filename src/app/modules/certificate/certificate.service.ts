@@ -3,87 +3,143 @@ import { PaymentStatus, UserRoleEnum, UserStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { studentProgressService } from '../studentProgress/studentProgress.service';
+import e from 'cors';
 
+const issueCertificate = async (
+  userId: string,
+  courseId: string,
+  role: UserRoleEnum,
+) => {
+  return await prisma.$transaction(async tx => {
+    // 1️⃣ Verify enrollment or employee assignment
+    let enrollmentDate: Date | null = null;
+    let user: any = null;
 
-const issueCertificate = async (userId: string, courseId: string) => {
-  return await prisma.$transaction(async (tx) => {
-    // Check if user is enrolled and has completed the course
-    const checkForCompletion = await studentProgressService.getCourseCompletionStatus(userId, courseId);
-    if (!checkForCompletion.isCompleted) {
+    if (role === UserRoleEnum.EMPLOYEE) {
+      const employee = await tx.employeeCredential.findFirst({
+        where: { userId, courseId },
+        include: { user: true },
+      });
+      if (!employee)
+        throw new AppError(httpStatus.FORBIDDEN, 'You are not assigned to this course');
+      enrollmentDate = employee.createdAt;
+      user = employee.user;
+    } else {
+      const enrollment = await tx.enrolledCourse.findFirst({
+        where: { userId, courseId },
+        include: { user: true },
+      });
+      if (!enrollment)
+        throw new AppError(httpStatus.FORBIDDEN, 'You are not enrolled in this course');
+      enrollmentDate = enrollment.createdAt;
+      user = enrollment.user;
+    }
+
+    if (!enrollmentDate)
+      throw new AppError(httpStatus.NOT_FOUND, 'Enrollment record not found');
+
+    // 2️⃣ Check if course is fully completed
+    const completion = await studentProgressService.getCourseCompletionStatus(userId, courseId, role);
+    if (!completion.isCompleted)
       throw new AppError(httpStatus.BAD_REQUEST, 'Course not completed yet');
-    }
-    
-    const enrollment = await tx.enrolledCourse.findUnique({
-      where: {
-        userId_courseId: {
-          userId: userId,
-          courseId: courseId,
-        },
-      },
-      include: {
-        user: true,
-        course: true,
-      },
-    });
 
-    if (!enrollment) {
-      throw new AppError(httpStatus.NOT_FOUND, 'Enrollment not found for this course');
+    // 3️⃣ Check 5-day waiting period
+    const eligibleDate = new Date(enrollmentDate);
+    eligibleDate.setDate(eligibleDate.getDate() + 5);
+    const now = new Date();
+    if (now < eligibleDate) {
+      const remainingDays = Math.ceil(
+        (eligibleDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        `You can only receive the certificate after ${remainingDays} more day(s).`,
+      );
     }
 
-    // Check if certificate already exists
-    const existingCertificate = await tx.certificate.findFirst({
-      where: {
-        userId: userId,
-        courseId: courseId,
-      },
+    // 4️⃣ Ensure no existing certificate
+    const existing = await tx.certificate.findFirst({
+      where: { courseId, userId },
     });
-
-    if (existingCertificate) {
+    if (existing)
       throw new AppError(httpStatus.CONFLICT, 'Certificate already issued for this course');
-    }
 
-    // Generate certificate ID and URL
+    // 5️⃣ Find certificate template (CertificateContent)
+    const template = await tx.certificateContent.findUnique({
+      where: { courseId },
+    });
+    if (!template)
+      throw new AppError(httpStatus.NOT_FOUND, 'Certificate template not found for this course');
+
+    // 6️⃣ Generate a unique certificate ID
     const certificateId = generateCertificateId();
 
-    const findCertificateId = await tx.certificate.findUnique({
-      where: {
-        certificateId: certificateId,
-      },
+    // 7️⃣ Calculate course dates for certificate info
+    const firstLesson = await tx.lesson.findFirst({
+      where: { section: { courseId } },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    });
+    const lastLesson = await tx.lesson.findFirst({
+      where: { section: { courseId } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
     });
 
-    if (findCertificateId) {
-      throw new AppError(httpStatus.CONFLICT, 'Certificate ID conflict, please try again');
-    }
+    const startDate = firstLesson?.createdAt ?? enrollmentDate;
+    const endDate = lastLesson?.createdAt ?? now;
 
-    // Create certificate
+    // 8️⃣ Prepare dynamic mainContents object
+    const mainContents = {
+      fullName: user?.fullName || 'N/A',
+      dob: user?.dateOfBirth || 'N/A',
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+      certificateNumber: certificateId,
+    };
+
+
+    // 9️⃣ Create the certificate record
     const certificate = await tx.certificate.create({
       data: {
-        userId: userId,
-        courseId: courseId,
-        certificateId: certificateId,
+        userId,
+        courseId,
+        certificateContentId: template.id,
+        certificateId,
+        issueDate: now,
+        // companyId: role === UserRoleEnum.EMPLOYEE ? user?.companyId ?? null : null,
+        //  mainContents, // Removed because it's not a valid property in the Prisma schema
       },
       include: {
-        user: {
-          select: {
-            fullName: true,
-            email: true,
-          },
-        },
-        course: {
-          select: {
-            courseTitle: true,
-            courseShortDescription: true,
-          },
-        },
+        user: { select: { fullName: true, email: true } },
+        course: { select: { courseTitle: true } },
+        certificateContent: { select: { title: true, placeholders: true } },
       },
     });
 
-    return certificate;
+    const contentUpdate = await tx.certificateContent.update({
+      where: { id: template.id },
+      data: { mainContents: mainContents },
+    });
+    if (!contentUpdate) {
+      throw new AppError(
+        httpStatus.INTERNAL_SERVER_ERROR,
+        'Failed to update certificate content with main contents',
+      );
+    }
+
+    return {
+      certificate,
+      mainContents,
+    };
   });
 };
 
-const checkCourseCompletionAndIssueCertificate = async (userId: string, courseId: string) => {
-  return await prisma.$transaction(async (tx) => {
+const checkCourseCompletionAndIssueCertificate = async (
+  userId: string,
+  courseId: string,
+) => {
+  return await prisma.$transaction(async tx => {
     // Get course with all sections and lessons
     const course = await tx.course.findUnique({
       where: { id: courseId },
@@ -109,9 +165,13 @@ const checkCourseCompletionAndIssueCertificate = async (userId: string, courseId
     });
 
     // Calculate total lessons and completed lessons
-    const totalLessons = course.Section.reduce((sum, section) => sum + section.Lesson.length, 0);
+    const totalLessons = course.Section.reduce(
+      (sum, section) => sum + section.Lesson.length,
+      0,
+    );
     const completedLessons = progress.filter(p => p.isCompleted).length;
-    const completionPercentage = totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0;
+    const completionPercentage =
+      totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0;
     const isCourseCompleted = completionPercentage >= 100;
 
     // Update enrollment progress
@@ -131,7 +191,10 @@ const checkCourseCompletionAndIssueCertificate = async (userId: string, courseId
     let certificate = null;
 
     // Issue certificate if course is completed and payment is done
-    if (isCourseCompleted && enrollment.paymentStatus === PaymentStatus.COMPLETED) {
+    if (
+      isCourseCompleted &&
+      enrollment.paymentStatus === PaymentStatus.COMPLETED
+    ) {
       // Check if certificate already exists
       const existingCertificate = await tx.certificate.findFirst({
         where: {
@@ -143,7 +206,6 @@ const checkCourseCompletionAndIssueCertificate = async (userId: string, courseId
       if (!existingCertificate) {
         // Generate certificate ID and URL
         const certificateId = generateCertificateId();
-       
 
         // Create certificate
         certificate = await tx.certificate.create({
@@ -151,6 +213,7 @@ const checkCourseCompletionAndIssueCertificate = async (userId: string, courseId
             userId: userId,
             courseId: courseId,
             certificateId: certificateId,
+            certificateContentId: certificateId,
           },
           include: {
             user: {
@@ -183,6 +246,105 @@ const checkCourseCompletionAndIssueCertificate = async (userId: string, courseId
   });
 };
 
+const getCertificateStatus = async (
+  userId: string,
+  courseId: string,
+  role: UserRoleEnum,
+) => {
+  // 1. Find enrollment/assignment date
+  let enrollmentDate: Date | null = null;
+
+  if (role === UserRoleEnum.EMPLOYEE) {
+    const employeeCourse = await prisma.employeeCredential.findFirst({
+      where: {
+        userId,
+        courseId,
+      },
+      select: { createdAt: true },
+    });
+    if (!employeeCourse) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'You are not assigned to this course',
+      );
+    }
+    enrollmentDate = employeeCourse.createdAt;
+  } else {
+    const enrollment = await prisma.enrolledCourse.findFirst({
+      where: {
+        userId,
+        courseId,
+      },
+      select: { createdAt: true },
+    });
+    if (!enrollment) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'You are not enrolled in this course',
+      );
+    }
+    enrollmentDate = enrollment.createdAt;
+  }
+
+  if (!enrollmentDate) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Enrollment record not found');
+  }
+
+  // 2. Check course completion
+  const completion =
+    await await studentProgressService.getCourseCompletionStatus(
+      userId,
+      courseId,
+      role,
+    );
+
+  // 3. Calculate 5-day waiting period
+  const now = new Date();
+  const eligibleDate = new Date(enrollmentDate);
+  eligibleDate.setDate(eligibleDate.getDate() + 5);
+  const hasWaitedFiveDays = now >= eligibleDate;
+
+  // 4. Check if a certificate is already issued
+  const existingCertificate = await prisma.certificate.findFirst({
+    where: {
+      courseId,
+      userId,
+    },
+  });
+
+  // 5. Determine status
+  let status = '';
+  let message = '';
+
+  if (existingCertificate) {
+    status = 'ISSUED';
+    message = 'Certificate has already been issued.';
+  } else if (!completion.isCompleted) {
+    status = 'PENDING_COMPLETION';
+    message = 'Complete all lessons and tests to become eligible.';
+  } else if (!hasWaitedFiveDays) {
+    const remainingDays = Math.ceil(
+      (eligibleDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    status = 'WAITING_PERIOD';
+    message = `You need to wait ${remainingDays} more day(s) to get your certificate.`;
+  } else {
+    status = 'READY';
+    message = 'You are eligible to receive the certificate.';
+  }
+
+  return {
+    courseId,
+    status,
+    message,
+    isCompleted: completion.isCompleted,
+    progress: completion.progressPercentage,
+    enrolledAt: enrollmentDate,
+    eligibleAt: eligibleDate,
+    certificateIssued: !!existingCertificate,
+  };
+};
+
 const getAllCertificatesFromDb = async (userId: string) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -213,14 +375,16 @@ const getAllCertificatesFromDb = async (userId: string) => {
         issueDate: 'desc',
       },
     });
-  } 
-  else {
+  } else {
     // Students can see only their certificates
     return await getUserCertificates(userId);
   }
 };
 
-const getCertificateByIdForAdmin = async (certificateId: string, userId: string) => {
+const getCertificateByIdForAdmin = async (
+  certificateId: string,
+  userId: string,
+) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
   });
@@ -229,7 +393,10 @@ const getCertificateByIdForAdmin = async (certificateId: string, userId: string)
     throw new AppError(httpStatus.NOT_FOUND, 'User not found');
   }
 
-  if (user.role !== UserRoleEnum.ADMIN && user.role !== UserRoleEnum.SUPER_ADMIN) {
+  if (
+    user.role !== UserRoleEnum.ADMIN &&
+    user.role !== UserRoleEnum.SUPER_ADMIN
+  ) {
     throw new AppError(httpStatus.FORBIDDEN, 'Access denied');
   }
 
@@ -286,16 +453,13 @@ const getUserCertificates = async (userId: string) => {
 };
 
 const getCertificateById = async (certificateId: string, userId?: string) => {
-  const whereClause: any = {
-    certificateId: certificateId,
-  };
-
-  if (userId) {
-    whereClause.userId = userId;
-  }
+  
 
   const certificate = await prisma.certificate.findFirst({
-    where: whereClause,
+    where: {
+      id: certificateId,
+      userId: userId
+    },
     include: {
       user: {
         select: {
@@ -312,6 +476,8 @@ const getCertificateById = async (certificateId: string, userId?: string) => {
           instructorName: true,
         },
       },
+      certificateContent: { select: { title: true, placeholders: true, mainContents: true }
+    }
     },
   });
 
@@ -344,7 +510,10 @@ const verifyCertificate = async (certificateId: string) => {
   });
 
   if (!certificate) {
-    throw new AppError(httpStatus.NOT_FOUND, 'Certificate not found or invalid');
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      'Certificate not found or invalid',
+    );
   }
 
   return {
@@ -360,11 +529,10 @@ const generateCertificateId = (): string => {
   return `${timestamp}-${randomStr}`.toUpperCase();
 };
 
-
-
 export const certificateService = {
   issueCertificate,
   checkCourseCompletionAndIssueCertificate,
+  getCertificateStatus,
   getAllCertificatesFromDb,
   getUserCertificates,
   getCertificateByIdForAdmin,

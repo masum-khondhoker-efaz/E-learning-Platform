@@ -45,7 +45,7 @@ const markTestCompleted = catchAsync(async (req, res) => {
       where: { id: user.id, isProfileComplete: true },
     });
     if (!findUser) {
-      throw new AppError( 
+      throw new AppError(
         httpStatus.FORBIDDEN,
         'Please complete your profile to proceed.',
       );
@@ -55,12 +55,40 @@ const markTestCompleted = catchAsync(async (req, res) => {
   const result = await studentProgressService.markTestCompleted(
     user.id,
     req.body.testId,
-    userRole
+    userRole,
   );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Test marked as completed',
+    data: result,
+  });
+});
+
+const markCourseCompleted = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const userRole = user.role;
+  if (userRole === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'Please complete your profile to proceed.',
+      );
+    }
+  }
+
+  const result = await studentProgressService.markCourseCompleted(
+    user.id,
+    req.body.courseId,
+    userRole,
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Course marked as completed',
     data: result,
   });
 });
@@ -72,7 +100,7 @@ const getALessonMaterialById = catchAsync(async (req, res) => {
   const result = await studentProgressService.getALessonMaterialByIdFromDb(
     user.id,
     lessonMaterialId,
-    userRole
+    userRole,
   );
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -160,10 +188,23 @@ const getLessonStatus = catchAsync(async (req, res) => {
 
 const getCourseCompletion = catchAsync(async (req, res) => {
   const user = req.user as any;
+  const userRole = user.role;
+  if (userRole === UserRoleEnum.EMPLOYEE) {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'Please complete your profile to proceed.',
+      );
+    }
+  }
   const courseId = req.params.id;
   const result = await studentProgressService.getCourseCompletionStatus(
     user.id,
     courseId,
+    userRole,
   );
 
   sendResponse(res, {
@@ -177,6 +218,7 @@ const getCourseCompletion = catchAsync(async (req, res) => {
 export const studentProgressController = {
   markLessonCompleted,
   markTestCompleted,
+  markCourseCompleted,
   getALessonMaterialById,
   markLessonIncomplete,
   getACourseDetails,

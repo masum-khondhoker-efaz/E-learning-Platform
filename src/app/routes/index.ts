@@ -23,6 +23,7 @@ import { favoriteCourseRoutes } from '../modules/favoriteCourse/favoriteCourse.r
 import { inPersonTrainingRoutes } from '../modules/inPersonTraining/inPersonTraining.routes';
 import { cartRoutes } from '../modules/cart/cart.routes';
 import { checkoutRoutes } from '../modules/checkout/checkout.routes';
+import { certificateContentRoutes } from '../modules/certificateContent/certificateContent.routes';
 
 const router = express.Router();
 
@@ -122,6 +123,10 @@ const moduleRoutes = [
   {
     path: '/checkouts',
     route: checkoutRoutes,
+  },
+  {
+    path: '/certificate-contents',
+    route: certificateContentRoutes,
   },
 ];
 

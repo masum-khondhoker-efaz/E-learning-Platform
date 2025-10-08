@@ -2,11 +2,18 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { certificateService } from './certificate.service';
+import AppError from '../../errors/AppError';
+import prisma from '../../utils/prisma';
 
 // certificate.controller.ts
 const issueCertificate = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await certificateService.issueCertificate(user.id, req.body.courseId);
+  const userRole = user.role;
+  const result = await certificateService.issueCertificate(
+    user.id,
+    req.body.courseId,
+    userRole,
+  );
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -18,12 +25,24 @@ const issueCertificate = catchAsync(async (req, res) => {
 
 const checkCompletion = catchAsync(async (req, res) => {
   const user = req.user as any;
+  const userRole = user.role;
+  if (userRole === 'EMPLOYEE') {
+    const findUser = await prisma.user.findUnique({
+      where: { id: user.id, isProfileComplete: true },
+    });
+    if (!findUser) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'Please complete your profile to proceed.',
+      );
+    }
+  }
   const courseId = req.params.id;
-  const result =
-    await certificateService.checkCourseCompletionAndIssueCertificate(
-      user.id,
-      courseId,
-    );
+  const result = await certificateService.getCertificateStatus(
+    user.id,
+    courseId,
+    userRole,
+  );
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

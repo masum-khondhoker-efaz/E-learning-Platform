@@ -20,6 +20,13 @@ router.post(
   studentProgressController.markTestCompleted,
 );
 
+router.post(
+  '/complete-course',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  validateRequest(studentProgressValidation.markCourseCompletedSchema),
+  studentProgressController.markCourseCompleted,
+);
+
 // router.post(
 //   '/lessons/:id/incomplete',
 //   auth(UserRoleEnum.STUDENT),

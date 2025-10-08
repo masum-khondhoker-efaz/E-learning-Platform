@@ -6,6 +6,11 @@ import {
 } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+import { 
+  calculatePagination, 
+  formatPaginationResponse 
+} from '../../utils/pagination';
 
 const createInPersonTrainingIntoDb = async (userId: string, data: any) => {
   const existingInPersonTraining = await prisma.inPersonTraining.findFirst({
@@ -30,12 +35,162 @@ const createInPersonTrainingIntoDb = async (userId: string, data: any) => {
   return result;
 };
 
-const getInPersonTrainingListFromDb = async (userId: string) => {
-  const result = await prisma.inPersonTraining.findMany();
-  if (result.length === 0) {
-    return { message: 'No inPersonTraining found' };
+
+
+const getInPersonTrainingListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build the complete where clause manually
+  const whereQuery: any = {};
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        user: {
+          fullName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        user: {
+          email: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          instructorName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        companyName: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+      {
+        contactPersonName: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+    ];
   }
-  return result;
+
+  // Add filter conditions
+  if (options.status) {
+    whereQuery.status = options.status;
+  }
+
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  if (options.instructorName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      instructorName: options.instructorName,
+    };
+  }
+
+  // Date range filter for training date
+  if (options.startDate || options.endDate) {
+    whereQuery.preferredDate = {};
+    if (options.startDate) {
+      whereQuery.preferredDate.gte = new Date(options.startDate);
+    }
+    if (options.endDate) {
+      whereQuery.preferredDate.lte = new Date(options.endDate);
+    }
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.inPersonTraining.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
+  const inPersonTrainings = await prisma.inPersonTraining.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phoneNumber: true,
+        },
+      },
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          courseLevel: true,
+          instructorName: true,
+          price: true,
+          courseThumbnail: true,
+          category: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // flatten the user and course details into the main object
+  const transformedInPersonTrainings = inPersonTrainings.map((training) => ({
+    id: training.id,
+    userId: training.userId,
+    courseId: training.courseId,
+    status: training.status,
+    createdAt: training.createdAt,
+    updatedAt: training.updatedAt,
+    user: training.user,
+    course: training.course,
+  }));
+
+
+  return formatPaginationResponse(transformedInPersonTrainings, total, page, limit);
 };
 
 const getInPersonTrainingByIdFromDb = async (

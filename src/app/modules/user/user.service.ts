@@ -174,7 +174,7 @@ const resendUserVerificationEmail = async (email: string) => {
 };
 
 const getMyProfileFromDB = async (id: string) => {
-  const Profile = await prisma.user.findUniqueOrThrow({
+  const Profile = await prisma.user.findUnique({
     where: {
       id: id,
     },

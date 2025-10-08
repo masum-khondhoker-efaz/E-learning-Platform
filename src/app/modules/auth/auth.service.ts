@@ -160,7 +160,7 @@ const refreshTokenFromDB = async (refreshedToken: string) => {
     throw new AppError(httpStatus.UNAUTHORIZED, 'Invalid refresh token');
   }
 
-  const userData = await prisma.user.findUniqueOrThrow({
+  const userData = await prisma.user.findUnique({
     where: {
       id: (decoded as any).id,
       status: UserStatus.ACTIVE,

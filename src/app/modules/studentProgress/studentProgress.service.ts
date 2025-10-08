@@ -9,7 +9,7 @@ const markLessonCompleted = async (
   lessonId: string,
   role: UserRoleEnum,
 ) => {
-  return await prisma.$transaction(async (tx) => {
+  return await prisma.$transaction(async tx => {
     // 1. Get lesson details
     const lesson = await tx.lesson.findUnique({
       where: { id: lessonId },
@@ -70,7 +70,7 @@ const markLessonCompleted = async (
     });
 
     if (previousLessons.length > 0) {
-      const previousLessonIds = previousLessons.map((l) => l.id);
+      const previousLessonIds = previousLessons.map(l => l.id);
 
       const incompleteLesson = await tx.studentProgress.findFirst({
         where: {
@@ -94,7 +94,9 @@ const markLessonCompleted = async (
     let progress = await tx.studentProgress.findFirst({
       where: {
         lessonId,
-        ...(role === UserRoleEnum.EMPLOYEE ? { userId: userId } : { userId: userId }),
+        ...(role === UserRoleEnum.EMPLOYEE
+          ? { userId: userId }
+          : { userId: userId }),
       },
     });
 
@@ -146,7 +148,7 @@ const markTestCompleted = async (
   testId: string,
   role: UserRoleEnum,
 ) => {
-  return await prisma.$transaction(async (tx) => {
+  return await prisma.$transaction(async tx => {
     // 1. Get the test with section -> course
     const test = await tx.test.findUnique({
       where: { id: testId },
@@ -155,7 +157,8 @@ const markTestCompleted = async (
       },
     });
 
-    if (!test ) { // || !test.isPublished
+    if (!test) {
+      // || !test.isPublished
       throw new AppError(httpStatus.NOT_FOUND, 'Test not found or unpublished');
     }
 
@@ -163,7 +166,10 @@ const markTestCompleted = async (
     const sectionId = test.sectionId;
 
     if (!courseId) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'Test not linked to any course');
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Test not linked to any course',
+      );
     }
 
     // 2. Verify enrollment / employee assignment
@@ -173,7 +179,10 @@ const markTestCompleted = async (
       });
 
       if (!employeeEnrollment) {
-        throw new AppError(httpStatus.FORBIDDEN, 'You are not assigned to this course');
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'You are not assigned to this course',
+        );
       }
     } else {
       const enrollment = await tx.enrolledCourse.findFirst({
@@ -181,7 +190,10 @@ const markTestCompleted = async (
       });
 
       if (!enrollment) {
-        throw new AppError(httpStatus.FORBIDDEN, 'You are not enrolled in this course');
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'You are not enrolled in this course',
+        );
       }
     }
 
@@ -197,7 +209,7 @@ const markTestCompleted = async (
     });
 
     if (previousTests.length > 0) {
-      const previousTestIds = previousTests.map((t) => t.id);
+      const previousTestIds = previousTests.map(t => t.id);
       const attemptedTests = await tx.testAttempt.findMany({
         where: {
           userId: id,
@@ -207,9 +219,9 @@ const markTestCompleted = async (
         select: { testId: true },
       });
 
-      const attemptedIds = attemptedTests.map((t) => t.testId);
+      const attemptedIds = attemptedTests.map(t => t.testId);
       const notAttempted = previousTestIds.filter(
-        (tid) => !attemptedIds.includes(tid),
+        tid => !attemptedIds.includes(tid),
       );
 
       if (notAttempted.length > 0) {
@@ -227,8 +239,11 @@ const markTestCompleted = async (
         userId: id,
       },
     });
-    if(!progress) {
-      throw new AppError(httpStatus.NOT_FOUND, 'Progress record not found for this test');
+    if (!progress) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Progress record not found for this test',
+      );
     }
 
     if (progress) {
@@ -250,7 +265,11 @@ const markTestCompleted = async (
     }
 
     // 5. Recalculate overall course progress
-    const courseProgress = await calculateProgressInsideTransaction(tx, id, courseId);
+    const courseProgress = await calculateProgressInsideTransaction(
+      tx,
+      id,
+      courseId,
+    );
 
     // 6. Return combined response
     return {
@@ -263,6 +282,110 @@ const markTestCompleted = async (
     };
   });
 };
+
+const markCourseCompleted = async (
+  userId: string,
+  courseId: string,
+  role: UserRoleEnum,
+) => {
+  return await prisma.$transaction(async tx => {
+    // 1️⃣ Role-based enrollment validation
+    const enrollmentCheck =
+      role === UserRoleEnum.EMPLOYEE
+        ? await tx.employeeCredential.findFirst({
+            where: { userId, courseId },
+          })
+        : await tx.enrolledCourse.findFirst({
+            where: { userId, courseId },
+          });
+
+    if (!enrollmentCheck) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        role === UserRoleEnum.EMPLOYEE
+          ? 'You are not assigned to this course'
+          : 'You are not enrolled in this course',
+      );
+    }
+
+    // 2️⃣ Fetch all sections, lessons, and tests
+    const course = await tx.course.findUnique({
+      where: { id: courseId },
+      include: {
+        Section: {
+          include: { Lesson: true, Test: true },
+        },
+      },
+    });
+
+    if (!course) {
+      throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+    }
+
+    // 3️⃣ Collect all content IDs in one unified array
+    const contentItems = course.Section.flatMap(section => [
+      ...section.Lesson.map(lesson => ({
+        id: lesson.id,
+        type: 'lesson' as const,
+        sectionId: section.id,
+      })),
+      ...section.Test.map(test => ({
+        id: test.id,
+        type: 'test' as const,
+        sectionId: section.id,
+      })),
+    ]);
+
+    // 4️⃣ Helper to upsert progress for each content item
+    const upsertProgress = async (item: {
+      id: string;
+      type: 'lesson' | 'test';
+      sectionId: string;
+    }) => {
+      const whereClause =
+        item.type === 'lesson'
+          ? { lessonId: item.id, userId }
+          : { testId: item.id, userId };
+
+      const existing = await tx.studentProgress.findFirst({ where: whereClause });
+
+      if (existing) {
+        await tx.studentProgress.update({
+          where: { id: existing.id },
+          data: { isCompleted: true },
+        });
+      } else {
+        await tx.studentProgress.create({
+          data: {
+            userId,
+            courseId,
+            sectionId: item.sectionId,
+            isCompleted: true,
+            ...(item.type === 'lesson'
+              ? { lessonId: item.id }
+              : { testId: item.id }),
+          },
+        });
+      }
+    };
+
+    // 5️⃣ Mark all lessons & tests as completed
+    await Promise.all(contentItems.map(item => upsertProgress(item)));
+
+    // 6️⃣ Compute updated progress
+    const progress = await calculateProgressInsideTransaction(tx, userId, courseId);
+
+    // 7️⃣ Return summary
+    return {
+      courseId,
+      overallProgress: progress.overallProgress,
+      completedItems: progress.completedLessons, // lessons + tests
+      totalItems: progress.totalLessonsAndTests,
+      message: 'Course marked as completed successfully',
+    };
+  });
+};
+
 
 const getALessonMaterialByIdFromDb = async (
   userId: string,
@@ -322,7 +445,10 @@ const getALessonMaterialByIdFromDb = async (
     where: {
       section: { courseId },
       OR: [
-        { sectionId: lessonMaterial.sectionId, order: { lt: lessonMaterial.order } },
+        {
+          sectionId: lessonMaterial.sectionId,
+          order: { lt: lessonMaterial.order },
+        },
         { section: { order: { lt: lessonMaterial.section.order } } },
       ],
     },
@@ -379,20 +505,20 @@ const calculateProgressInsideTransaction = async (
     throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
   }
 
-
   const totalLessonsAndTests: number = (course as Course).Section.reduce(
     (sum: number, section: Section) => {
       const lessonsCount: number = section.Lesson.length;
       const testsCount: number = section.Test.length;
       return sum + lessonsCount + testsCount;
     },
-    0
+    0,
   );
 
   // Count completed items (lessons/tests) from StudentProgress
- 
 
-  const completedItems: number = (progress as StudentProgress[]).filter((p: StudentProgress) => p.isCompleted).length;
+  const completedItems: number = (progress as StudentProgress[]).filter(
+    (p: StudentProgress) => p.isCompleted,
+  ).length;
 
   const overallProgress =
     totalLessonsAndTests > 0
@@ -449,7 +575,10 @@ const getACourseDetailsFromDb = async (userId: string, courseId: string) => {
   });
 
   if (!enrollment) {
-    throw new AppError(httpStatus.FORBIDDEN, 'You are not enrolled in this course');
+    throw new AppError(
+      httpStatus.FORBIDDEN,
+      'You are not enrolled in this course',
+    );
   }
 
   const course = await prisma.course.findUnique({
@@ -480,8 +609,6 @@ const getACourseDetailsFromDb = async (userId: string, courseId: string) => {
 };
 
 const getAllCourseProgress = async (userId: string) => {
-  
-
   const enrollments = await prisma.enrolledCourse.findMany({
     where: { userId: userId },
     select: {
@@ -499,7 +626,7 @@ const getAllCourseProgress = async (userId: string) => {
     enrollments.map(async enrollment => {
       const progress = await getAStudentProgress(userId, enrollment.courseId);
       // Exclude progressBySection from the response
-      const { progressBySection,lessons, ...restProgress } = progress;
+      const { progressBySection, lessons, ...restProgress } = progress;
       return {
         courseId: enrollment.courseId,
         courseTitle: enrollment.course.courseTitle,
@@ -620,13 +747,15 @@ const getLessonCompletionStatus = async (userId: string, lessonId: string) => {
   };
 };
 
-const getCourseCompletionStatus = async (userId: string, courseId: string) => {
+const getCourseCompletionStatus = async (userId: string, courseId: string, role: UserRoleEnum) => {
+  // Fetch the course with both lessons and tests
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     include: {
       Section: {
         include: {
           Lesson: true,
+          Test: true, // Include tests to count them
         },
       },
     },
@@ -636,11 +765,43 @@ const getCourseCompletionStatus = async (userId: string, courseId: string) => {
     throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
   }
 
-  const totalLessons = course.Section.reduce(
-    (sum, section) => sum + section.Lesson.length,
+// check if user is enrolled in the course
+  if (role === UserRoleEnum.EMPLOYEE) {
+    const employeeEnrollment = await prisma.employeeCredential.findFirst({
+      where: {
+        userId: userId,
+        courseId: courseId,
+      },
+    });
+    if (!employeeEnrollment) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'You are not assigned to this course',
+      );
+    }
+  } else {
+  const enrollment = await prisma.enrolledCourse.findFirst({
+    where: {
+      userId: userId,
+      courseId: courseId,
+    },
+  }); 
+  if (!enrollment) {
+    throw new AppError(
+      httpStatus.FORBIDDEN,
+      'You are not enrolled in this course',
+    );
+  }
+}
+
+
+  //  Count all lessons + tests in the course
+  const totalLessonsAndTests = course.Section.reduce(
+    (sum, section) => sum + section.Lesson.length + section.Test.length,
     0,
   );
 
+  // Count completed items (both lessons and tests)
   const completedProgress = await prisma.studentProgress.count({
     where: {
       userId: userId,
@@ -649,15 +810,16 @@ const getCourseCompletionStatus = async (userId: string, courseId: string) => {
     },
   });
 
-  const isCourseCompleted = completedProgress === totalLessons;
+  // Determine completion status and percentage
+  const isCourseCompleted = completedProgress === totalLessonsAndTests;
 
   return {
     isCompleted: isCourseCompleted,
-    completedLessons: completedProgress,
-    totalLessons,
+    completedItems: completedProgress,
+    totalItems: totalLessonsAndTests,
     progressPercentage:
-      totalLessons > 0
-        ? Math.round((completedProgress / totalLessons) * 100)
+      totalLessonsAndTests > 0
+        ? Math.round((completedProgress / totalLessonsAndTests) * 100)
         : 0,
   };
 };
@@ -665,6 +827,7 @@ const getCourseCompletionStatus = async (userId: string, courseId: string) => {
 export const studentProgressService = {
   markLessonCompleted,
   markTestCompleted,
+  markCourseCompleted,
   getALessonMaterialByIdFromDb,
   markLessonIncomplete,
   getACourseDetailsFromDb,

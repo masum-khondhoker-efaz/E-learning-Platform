@@ -52,4 +52,7 @@ export interface ISearchAndFilterOptions extends IPaginationOptions {
   subject?: string;
   userEmail?: string;
   userName?: string;
+  companyName?: string;
+  startDate?: string;
+  endDate?: string;
 }

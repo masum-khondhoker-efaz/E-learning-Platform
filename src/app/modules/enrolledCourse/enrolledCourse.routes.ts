@@ -48,6 +48,18 @@ router.get(
   enrolledCourseController.getMyEnrolledCourseById,
 );
 
+router.get(
+  '/my-orders',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  enrolledCourseController.getMyOrders,
+);
+
+router.get(
+  '/learning-history',
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  enrolledCourseController.getMyLearningHistory,
+)
+
 router.patch(
   '/:id',
   auth(),
