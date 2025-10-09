@@ -2,6 +2,7 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { testService } from './test.service';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 const createTest = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -16,18 +17,25 @@ const createTest = catchAsync(async (req, res) => {
 
 const getTestList = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await testService.getTestListFromDb(user.id);
+  const result = await testService.getTestListFromDb(
+    user.id,
+    req.query as ISearchAndFilterOptions,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Test list retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 
 const getTestForTaking = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await testService.getTestForTakingFromDb(user.id, req.params.id);
+  const result = await testService.getTestForTakingFromDb(
+    user.id,
+    req.params.id,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -49,7 +57,11 @@ const getTestById = catchAsync(async (req, res) => {
 
 const updateTest = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await testService.updateTestIntoDb(user.id, req.params.id, req.body);
+  const result = await testService.updateTestIntoDb(
+    user.id,
+    req.params.id,
+    req.body,
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

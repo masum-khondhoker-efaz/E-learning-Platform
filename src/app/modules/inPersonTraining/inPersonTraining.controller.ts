@@ -63,15 +63,18 @@ const getInPersonTrainingById = catchAsync(async (req, res) => {
 });
 
 const getMyInPersonTrainingRequest = catchAsync(async (req, res) => {
-  const user = req.user as any;
+  const  user  = req.user as any;
   const result = await inPersonTrainingService.getMyInPersonTrainingRequestFromDb(
     user.id,
+    req.query as ISearchAndFilterOptions
   );
+  
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'My InPersonTrainings retrieved successfully',
-    data: result,
+    message: 'My in-person training requests retrieved successfully',
+    data: result.data,
+    meta: result.meta,
   });
 });
 
@@ -93,12 +96,15 @@ const getMyInPersonTrainings = catchAsync(async (req, res) => {
   const user = req.user as any;
   const result = await inPersonTrainingService.getMyInPersonTrainingsFromDb(
     user.id,
+    req.query as ISearchAndFilterOptions
   );
+  
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: 'My InPersonTrainings retrieved successfully',
-    data: result,
+    message: 'My in-person trainings retrieved successfully',
+    data: result.data,
+    meta: result.meta,
   });
 });
 

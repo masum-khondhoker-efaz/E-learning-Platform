@@ -5,6 +5,7 @@ import { cartService } from './cart.service';
 import { UserRoleEnum } from '@prisma/client';
 import prisma from '../../utils/prisma';
 import AppError from '../../errors/AppError';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 const createCart = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -31,12 +32,13 @@ const createCart = catchAsync(async (req, res) => {
 
 const getCartList = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await cartService.getCartListFromDb(user.id);
+  const result = await cartService.getCartListFromDb(user.id, req.query as ISearchAndFilterOptions);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Cart list retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 

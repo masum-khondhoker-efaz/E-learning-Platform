@@ -27,6 +27,7 @@ export interface IPaginationResponse<T> {
 
 export interface ISearchAndFilterOptions extends IPaginationOptions {
   searchTerm?: string;
+  userId?: string;
   status?: string;
   dateOfBirth?: string;
   role?: string;
@@ -50,9 +51,24 @@ export interface ISearchAndFilterOptions extends IPaginationOptions {
   rating?: number;  
   // Support specific filters
   subject?: string;
+  message?: string;
   userEmail?: string;
   userName?: string;
   companyName?: string;
   startDate?: string;
   endDate?: string;
+  paymentStatus?: string;
+  passingScoreMin?: number;
+  passingScoreMax?: number;
+  totalMarksMin?: number;
+  totalMarksMax?: number;
+  timeLimitMin?: number;
+  timeLimitMax?: number;
+  isPublished?: boolean;
+  isPassed?: boolean;
+  scoreMin?: number;
+  scoreMax?: number;
+  percentageMin?: number;
+  percentageMax?: number;
+  userPhone?: string;
 }

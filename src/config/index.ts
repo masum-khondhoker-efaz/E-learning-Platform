@@ -32,4 +32,5 @@ export default {
     stripe_webhook_secret: process.env.STRIPE_WEBHOOK_SECRET,
   },
   backend_base_url: process.env.BACKEND_BASE_URL,
+  frontend_base_url: process.env.FRONTEND_BASE_URL,
 };

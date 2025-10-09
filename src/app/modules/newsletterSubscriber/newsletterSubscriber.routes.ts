@@ -1,3 +1,4 @@
+import { User, UserRoleEnum } from '@prisma/client';
 import express from 'express';
 import auth from '../../middlewares/auth';
 import validateRequest from '../../middlewares/validateRequest';
@@ -33,7 +34,7 @@ router.put(
 
 router.delete(
   '/:id',
-  auth(),
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   newsletterSubscriberController.deleteNewsletterSubscriber,
 );
 

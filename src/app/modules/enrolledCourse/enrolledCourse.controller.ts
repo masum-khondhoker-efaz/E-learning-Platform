@@ -86,12 +86,14 @@ const getMyEnrolledCourses = catchAsync(async (req, res) => {
   if (user.role === UserRoleEnum.STUDENT) {
     const result = await enrolledCourseService.getMyEnrolledCoursesFromDb(
       user.id,
+      req.query as ISearchAndFilterOptions
     );
     sendResponse(res, {
       statusCode: httpStatus.OK,
       success: true,
       message: 'My EnrolledCourses retrieved successfully',
-      data: result,
+      data: result.data,
+      meta: result.meta,
     });
   }
   if (user.role === UserRoleEnum.EMPLOYEE) {
@@ -108,12 +110,14 @@ const getMyEnrolledCourses = catchAsync(async (req, res) => {
     const result =
       await enrolledCourseService.getMyEnrolledCoursesForEmployeeFromDb(
         user.id,
+        req.query as ISearchAndFilterOptions
       );
     sendResponse(res, {
       statusCode: httpStatus.OK,
       success: true,
       message: 'My EnrolledCourses retrieved successfully',
-      data: result,
+      data: result.data,
+      meta: result.meta,
     });
   }
 });
@@ -170,12 +174,13 @@ const getMyOrders = catchAsync(async (req, res) => {
       );
     }
   }
-  const result = await enrolledCourseService.getMyOrdersFromDb(user.id, userRole);
+  const result = await enrolledCourseService.getMyOrdersFromDb(user.id, userRole, req.query as ISearchAndFilterOptions);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,  
     message: 'My orders retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 

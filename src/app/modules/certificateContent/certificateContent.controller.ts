@@ -2,6 +2,7 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { certificateContentService } from './certificateContent.service';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 const createCertificateContent = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -17,12 +18,13 @@ const createCertificateContent = catchAsync(async (req, res) => {
 
 const getCertificateContentList = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await certificateContentService.getCertificateContentListFromDb(user.id);
+  const result = await certificateContentService.getCertificateContentListFromDb(user.id, req.query as ISearchAndFilterOptions);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'CertificateContent list retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 

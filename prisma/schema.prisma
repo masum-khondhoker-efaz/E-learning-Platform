@@ -206,7 +206,6 @@ model Course {
   Section             Section[]
   // Test                Test[]
   EnrolledCourse      EnrolledCourse[]
-  Payment             Payment[]
   Certificate         Certificate[]
   StudentProgress     StudentProgress[]
   CompanyPurchaseItem CompanyPurchaseItem[]
@@ -330,7 +329,8 @@ model Notification {
   title     String
   body      String
   data      String?
-  read      Boolean  @default(false)
+  isRead    Boolean  @default(false)
+  isClicked Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -343,10 +343,10 @@ model Notification {
 model Payment {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
   userId          String        @db.ObjectId
+  checkoutId      String        @db.ObjectId
   paymentIntentId String?
   paymentMethodId String?
   paymentAmount   Float
-  courseId        String        @db.ObjectId
   paymentDate     DateTime      @default(now())
   amountProvider  String
   invoiceId       String?
@@ -354,8 +354,8 @@ model Payment {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  user   User   @relation(fields: [userId], references: [id])
-  course Course @relation(fields: [courseId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  checkout Checkout @relation(fields: [checkoutId], references: [id])
 
   @@map("payments")
 }
@@ -685,8 +685,9 @@ model Checkout {
   updatedAt   DateTime       @updatedAt
 
   // Relationships
-  user  User           @relation(fields: [userId], references: [id])
-  items CheckoutItem[]
+  user    User           @relation(fields: [userId], references: [id])
+  items   CheckoutItem[]
+  Payment Payment[]
 
   @@map("checkouts")
 }

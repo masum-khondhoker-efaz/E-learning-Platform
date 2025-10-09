@@ -3,6 +3,7 @@ import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { testAttemptService } from './testAttempt.service';
 import AppError from '../../errors/AppError';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 const createTestAttempt = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -17,12 +18,15 @@ const createTestAttempt = catchAsync(async (req, res) => {
 
 const getTestAttemptList = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await testAttemptService.getTestAttemptListFromDb(user.id);
+  const result = await testAttemptService.getTestAttemptListFromDb(user.id,
+    req.query as ISearchAndFilterOptions
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'TestAttempt list retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 
@@ -39,12 +43,15 @@ const getTestAttemptById = catchAsync(async (req, res) => {
 
 const getMyTestAttempts = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await testAttemptService.getMyTestAttemptsFromDb(user.id);
+  const result = await testAttemptService.getMyTestAttemptsFromDb(user.id,
+    req.query as ISearchAndFilterOptions
+  );
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'My TestAttempts retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 

@@ -24,6 +24,7 @@ import { inPersonTrainingRoutes } from '../modules/inPersonTraining/inPersonTrai
 import { cartRoutes } from '../modules/cart/cart.routes';
 import { checkoutRoutes } from '../modules/checkout/checkout.routes';
 import { certificateContentRoutes } from '../modules/certificateContent/certificateContent.routes';
+import { PaymentRoutes } from '../modules/payment/payment.routes';
 
 const router = express.Router();
 
@@ -127,6 +128,10 @@ const moduleRoutes = [
   {
     path: '/certificate-contents',
     route: certificateContentRoutes,
+  },
+  {
+    path: '/payments',
+    route: PaymentRoutes,
   },
 ];
 

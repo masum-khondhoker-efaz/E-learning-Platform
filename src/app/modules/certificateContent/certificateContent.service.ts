@@ -1,7 +1,11 @@
 import prisma from '../../utils/prisma';
-import { UserRoleEnum, UserStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+import { 
+  calculatePagination, 
+  formatPaginationResponse 
+} from '../../utils/pagination';
 
 const createCertificateContentIntoDb = async (userId: string, data: any) => {
   // check course exists
@@ -49,31 +53,152 @@ const createCertificateContentIntoDb = async (userId: string, data: any) => {
   return certificateTemplate;
 };
 
-const getCertificateContentListFromDb = async (userId: string) => {
-  const result = await prisma.certificateContent.findMany({
+
+
+const getCertificateContentListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build the complete where clause manually
+  const whereQuery: any = {};
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        title: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          instructorName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+    ];
+  }
+
+  // Add filter conditions
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  if (options.instructorName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      instructorName: options.instructorName,
+    };
+  }
+
+  // Date range filter for creation date
+  if (options.startDate || options.endDate) {
+    whereQuery.createdAt = {};
+    if (options.startDate) {
+      whereQuery.createdAt.gte = new Date(options.startDate);
+    }
+    if (options.endDate) {
+      whereQuery.createdAt.lte = new Date(options.endDate);
+    }
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.certificateContent.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
+  const certificateContents = await prisma.certificateContent.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
     include: {
       course: {
-        select: { id: true, courseTitle: true },
+        select: {
+          id: true,
+          courseTitle: true,
+          courseLevel: true,
+          instructorName: true,
+          category: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      _count: {
+        select: {
+          Certificate: true,
+        },
       },
     },
   });
-  if (result.length === 0) {
-    return { message: 'No certificateContent found' };
-  }
 
-  // format the result to include courseTitle directly
-  const formattedResult = result.map((item) => ({
-    id: item.id,
-    courseId: item.courseId,
-    courseTitle: item.course.courseTitle,
-    title: item.title,
-    // htmlContent: item.htmlContent,
-    // placeholders: item.placeholders,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
+  // Transform data to include additional fields
+  const transformedContents = certificateContents.map(content => ({
+    id: content.id,
+    courseId: content.courseId,
+    courseTitle: content.course?.courseTitle,
+    courseLevel: content.course?.courseLevel,
+    instructorName: content.course?.instructorName,
+    categoryName: content.course?.category?.name,
+    title: content.title,
+    createdAt: content.createdAt,
+    updatedAt: content.updatedAt,
+    
+    // Creator details
+    createdBy: {
+      id: content.user?.id,
+      fullName: content.user?.fullName,
+      email: content.user?.email,
+    },
+    
+    // Usage statistics
+    certificatesIssued: content._count.Certificate,
+    
+    // Template info
+    hasPlaceholders: !!(content.placeholders && Object.keys(content.placeholders).length > 0),
+    placeholderCount: content.placeholders ? Object.keys(content.placeholders).length : 0,
   }));
 
-  return formattedResult;
+  return formatPaginationResponse(transformedContents, total, page, limit);
 };
 
 const getCertificateContentByIdFromDb = async (

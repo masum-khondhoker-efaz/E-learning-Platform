@@ -1,8 +1,13 @@
 import prisma from '../../utils/prisma';
-import { AttemptStatus, QuestionType, UserRoleEnum, UserStatus } from '@prisma/client';
+import { AttemptStatus, QuestionType } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { ITest } from './test.interface';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+import { 
+  calculatePagination, 
+  formatPaginationResponse 
+} from '../../utils/pagination';
 
 const createTestIntoDb = async (userId: string, data: ITest) => {
   const findExistingTest = await prisma.test.findFirst({
@@ -163,12 +168,183 @@ const createTestIntoDb = async (userId: string, data: ITest) => {
   });
 };
 
-const getTestListFromDb = async (userId: string) => {
-  const result = await prisma.test.findMany();
-  if (result.length === 0) {
-    return { message: 'No test found' };
+const getTestListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build the complete where clause manually
+  const whereQuery: any = {};
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        title: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+      {
+        description: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+      {
+        section: {
+          course: {
+            courseTitle: {
+              contains: options.searchTerm,
+              mode: 'insensitive' as const,
+            },
+          },
+        },
+      },
+      {
+        section: {
+          title: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+    ];
   }
-  return result;
+
+  // Add filter conditions
+  if (options.courseLevel) {
+    whereQuery.section = {
+      ...whereQuery.section,
+      course: {
+        courseLevel: options.courseLevel,
+      },
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.section = {
+      ...whereQuery.section,
+      course: {
+        category: {
+          name: options.categoryName,
+        },
+      },
+    };
+  }
+
+  // Filter by passing score range
+  if (options.passingScoreMin !== undefined || options.passingScoreMax !== undefined) {
+    whereQuery.passingScore = {};
+    if (options.passingScoreMin !== undefined) {
+      whereQuery.passingScore.gte = Number(options.passingScoreMin);
+    }
+    if (options.passingScoreMax !== undefined) {
+      whereQuery.passingScore.lte = Number(options.passingScoreMax);
+    }
+  }
+
+  // Filter by total marks range
+  if (options.totalMarksMin !== undefined || options.totalMarksMax !== undefined) {
+    whereQuery.totalMarks = {};
+    if (options.totalMarksMin !== undefined) {
+      whereQuery.totalMarks.gte = Number(options.totalMarksMin);
+    }
+    if (options.totalMarksMax !== undefined) {
+      whereQuery.totalMarks.lte = Number(options.totalMarksMax);
+    }
+  }
+
+  // Filter by time limit range
+  if (options.timeLimitMin !== undefined || options.timeLimitMax !== undefined) {
+    whereQuery.timeLimit = {};
+    if (options.timeLimitMin !== undefined) {
+      whereQuery.timeLimit.gte = Number(options.timeLimitMin);
+    }
+    if (options.timeLimitMax !== undefined) {
+      whereQuery.timeLimit.lte = Number(options.timeLimitMax);
+    }
+  }
+
+  // Filter by published status
+  if (options.isPublished !== undefined) {
+    whereQuery.isPublished = options.isPublished;
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.test.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
+  const tests = await prisma.test.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      section: {
+        select: {
+          id: true,
+          title: true,
+          course: {
+            select: {
+              id: true,
+              courseTitle: true,
+              courseLevel: true,
+              category: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      questions: {
+        select: {
+          id: true,
+          type: true,
+          marks: true,
+        },
+      },
+      _count: {
+        select: {
+          questions: true,
+          TestAttempt: true,
+        },
+      },
+    },
+  });
+
+  // Transform data to include additional calculated fields
+  const transformedTests = tests.map(test => ({
+    id: test.id,
+    title: test.title,
+    description: test.description,
+    passingScore: test.passingScore,
+    totalMarks: test.totalMarks,
+    timeLimit: test.timeLimit,
+    isPublished: test.isPublished,
+    createdAt: test.createdAt,
+    updatedAt: test.updatedAt,
+    sectionId: test.sectionId,
+    sectionTitle: test.section?.title,
+    courseId: test.section?.course?.id,
+    courseTitle: test.section?.course?.courseTitle,
+    courseLevel: test.section?.course?.courseLevel,
+    categoryName: test.section?.course?.category?.name,
+    totalQuestions: test._count.questions,
+    totalAttempts: test._count.TestAttempt,
+    questionTypes: [...new Set(test.questions.map(q => q.type))],
+  }));
+
+  return formatPaginationResponse(transformedTests, total, page, limit);
 };
 
 const getTestForTakingFromDb = async (userId: string, testId: string) => {

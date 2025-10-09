@@ -1,7 +1,11 @@
 import prisma from '../../utils/prisma';
-import { UserRoleEnum, UserStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+import { 
+  calculatePagination, 
+  formatPaginationResponse 
+} from '../../utils/pagination';
 
 // const createCartIntoDb1 = async (userId: string, data: any) => {
 
@@ -101,19 +105,112 @@ const createCartIntoDb = async (userId: string, data: { courseId: string }) => {
 //     return result;
 // };
 
-const getCartListFromDb = async (userId: string) => {
+
+
+
+const getCartListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // First, get the cart
   const cart = await prisma.cart.findFirst({
     where: { userId: userId },
+  });
+
+  if (!cart) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Cart not found');
+  }
+
+  // Build where query for cart items
+  const whereQuery: any = {
+    cartId: cart.id,
+  };
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          courseShortDescription: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+    ];
+  }
+
+  // Add filter conditions
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  // Handle price range filters
+  if (options.priceMin !== undefined || options.priceMax !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      price: {
+        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
+        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+      },
+    };
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Get total count
+  const total = await prisma.cartItem.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Get paginated cart items
+  const cartItems = await prisma.cartItem.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
     include: {
-      items: {
-        include: {
-          course: {
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          courseShortDescription: true,
+          courseLevel: true,
+          price: true,
+          discountPrice: true,
+          instructorName: true,
+          courseThumbnail: true,
+          avgRating: true,
+          totalRatings: true,
+          totalLessons: true,
+          totalDuration: true,
+          category: {
             select: {
-              id: true,
-              courseTitle: true,
-              courseShortDescription: true,
-              price: true,
-              discountPrice: true,
+              name: true,
             },
           },
         },
@@ -121,11 +218,26 @@ const getCartListFromDb = async (userId: string) => {
     },
   });
 
-  if (!cart) {
-    throw new AppError(httpStatus.NOT_FOUND, 'Cart not found');
-  }
+  // flatten the course details into each cart item
+  const detailedCartItems = cartItems.map(item => ({
+    id: item.id,
+    courseId: item.courseId,
+    cartId: item.cartId,
+    courseTitle: item.course.courseTitle,
+    courseThumbnail: item.course.courseThumbnail,
+    price: item.course.price,
+    discountPrice: item.course.discountPrice,
+    instructorName: item.course.instructorName,
+    categoryName: item.course.category?.name || null,
+    avgRating: item.course.avgRating,
+    totalRatings: item.course.totalRatings,
+    totalLessons: item.course.totalLessons,
+    totalHours: item.course.totalDuration,
+  }));
 
-  return cart.items;
+
+  // Always return pagination format
+  return formatPaginationResponse(detailedCartItems, total, page, limit);
 };
 
 const getCartByIdFromDb = async (userId: string, cartItemId: string) => {

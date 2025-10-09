@@ -67,6 +67,14 @@ const updateNewsletterSubscriberIntoDb = async (userId: string, newsletterSubscr
   };
 
 const deleteNewsletterSubscriberItemFromDb = async (userId: string, newsletterSubscriberId: string) => {
+  const findExisting = await prisma.newsletterSubscriber.findUnique({
+    where: {
+      id: newsletterSubscriberId,
+    },
+  });
+  if (!findExisting) {
+    throw new AppError(httpStatus.NOT_FOUND, 'newsletterSubscriber not found');
+  }
     const deletedItem = await prisma.newsletterSubscriber.delete({
       where: {
       id: newsletterSubscriberId,

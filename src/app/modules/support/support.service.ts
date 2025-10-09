@@ -23,40 +23,61 @@ const createSupportIntoDb = async (data: any) => {
 const getSupportListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
-  // Build search query
-  const searchFields = [
-    'subject',
-    'message',
-    'userEmail',
-    'userName',
-  ];
-  const searchQuery = buildSearchQuery({
-    searchTerm: options.searchTerm,
-    searchFields,
-  });
+  // Build the complete where clause manually
+  const whereQuery: any = {};
 
-  // Build filter query
-  const filterFields: Record<string, any> = {
-    ...(options.status && { status: options.status }),
-    // Add any other support-specific filters here
-  };
-  const filterQuery = buildFilterQuery(filterFields);
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        message: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+      {
+        userEmail: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+      {
+        userPhone: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+    ];
+  }
 
-  // Combine all queries
-  const whereQuery = combineQueries(
-    searchQuery,
-    filterQuery
-  );
+  // Add filter conditions
+  if (options.status) {
+    whereQuery.status = options.status;
+  }
+
+  // Date range filter for creation date
+  if (options.startDate || options.endDate) {
+    whereQuery.createdAt = {};
+    if (options.startDate) {
+      whereQuery.createdAt.gte = new Date(options.startDate);
+    }
+    if (options.endDate) {
+      whereQuery.createdAt.lte = new Date(options.endDate);
+    }
+  }
 
   // Sorting
-  const orderBy = getPaginationQuery(sortBy, sortOrder).orderBy;
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
 
   // Fetch total count for pagination
   const total = await prisma.support.count({ where: whereQuery });
 
-  if (total === 0) {
-    return formatPaginationResponse([], 0, page, limit);
-  }
+if (total === 0) {
+  return formatPaginationResponse([], 0, page, limit);
+}
+
   // Fetch paginated data
   const supports = await prisma.support.findMany({
     where: whereQuery,
@@ -71,11 +92,43 @@ const getSupportListFromDb = async (userId: string, options: ISearchAndFilterOpt
           status: true,
           createdAt: true,
         },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      },
+      _count: {
+        select: {
+          Reply: true,
+        },
       },
     },
   });
 
-  return formatPaginationResponse(supports, total, page, limit);
+  // Transform data to include additional fields
+  const transformedSupports = supports.map(support => ({
+    id: support.id,
+    message: support.message,
+    userEmail: support.userEmail,
+    userPhone: support.userPhone,
+    status: support.status,
+    createdAt: support.createdAt,
+    updatedAt: support.updatedAt,
+    
+    // Reply statistics
+    totalReplies: support._count.Reply,
+    hasReplies: support._count.Reply > 0,
+    latestReply: support.Reply.length > 0 ? support.Reply[0] : null,
+    
+    // Status indicators
+    isOpen: support.status === SupportStatus.OPEN,
+    isInProgress: support.status === SupportStatus.IN_PROGRESS,
+    isClosed: support.status === SupportStatus.CLOSED,
+    
+    // All replies
+    replies: support.Reply,
+  }));
+
+  return formatPaginationResponse(transformedSupports, total, page, limit);
 };
 
 

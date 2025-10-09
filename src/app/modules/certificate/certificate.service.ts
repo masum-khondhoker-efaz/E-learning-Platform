@@ -3,7 +3,12 @@ import { PaymentStatus, UserRoleEnum, UserStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { studentProgressService } from '../studentProgress/studentProgress.service';
-import e from 'cors';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+import { 
+  calculatePagination, 
+  formatPaginationResponse 
+} from '../../utils/pagination';
+
 
 const issueCertificate = async (
   userId: string,
@@ -345,7 +350,10 @@ const getCertificateStatus = async (
   };
 };
 
-const getAllCertificatesFromDb = async (userId: string) => {
+
+const getAllCertificatesFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
   });
@@ -354,31 +362,179 @@ const getAllCertificatesFromDb = async (userId: string) => {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found');
   }
 
-  if (user.role === UserRoleEnum.ADMIN || UserRoleEnum.ADMIN) {
-    // Admin can see all certificates
-    return await prisma.certificate.findMany({
-      include: {
-        user: {
-          select: {
-            fullName: true,
-            email: true,
-          },
-        },
-        course: {
-          select: {
-            courseTitle: true,
-            courseShortDescription: true,
-          },
-        },
-      },
-      orderBy: {
-        issueDate: 'desc',
-      },
-    });
-  } else {
-    // Students can see only their certificates
-    return await getUserCertificates(userId);
+  // Build the complete where clause manually
+  const whereQuery: any = {};
+
+  // For non-admin users, only show their own certificates
+  if (user.role !== UserRoleEnum.ADMIN && user.role !== UserRoleEnum.SUPER_ADMIN) {
+    whereQuery.userId = userId;
   }
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        user: {
+          fullName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        user: {
+          email: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          instructorName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        certificateId: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+    ];
+  }
+
+  // Add filter conditions
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  if (options.instructorName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      instructorName: options.instructorName,
+    };
+  }
+
+  // Date range filter for issue date
+  if (options.startDate || options.endDate) {
+    whereQuery.issueDate = {};
+    if (options.startDate) {
+      whereQuery.issueDate.gte = new Date(options.startDate);
+    }
+    if (options.endDate) {
+      whereQuery.issueDate.lte = new Date(options.endDate);
+    }
+  }
+
+  // Filter by specific user (for admin viewing specific user's certificates)
+  if (options.userId && (user.role === UserRoleEnum.ADMIN || user.role === UserRoleEnum.SUPER_ADMIN)) {
+    whereQuery.userId = options.userId;
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.certificate.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
+  const certificates = await prisma.certificate.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          image: true,
+        },
+      },
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          courseShortDescription: true,
+          courseLevel: true,
+          instructorName: true,
+          courseThumbnail: true,
+          category: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+      certificateContent: {
+        select: {
+          title: true,
+          placeholders: true,
+          mainContents: true,
+        },
+      },
+    },
+  });
+
+  // Transform data to include additional fields
+  const transformedCertificates = certificates.map(cert => ({
+    id: cert.id,
+    certificateId: cert.certificateId,
+    issueDate: cert.issueDate,
+    createdAt: cert.createdAt,
+    
+    // User details
+    userId: cert.user?.id,
+    userFullName: cert.user?.fullName,
+    userEmail: cert.user?.email,
+    userImage: cert.user?.image,
+    
+    // Course details
+    courseId: cert.courseId,
+    courseTitle: cert.course?.courseTitle,
+    courseShortDescription: cert.course?.courseShortDescription,
+    courseLevel: cert.course?.courseLevel,
+    instructorName: cert.course?.instructorName,
+    courseThumbnail: cert.course?.courseThumbnail,
+    categoryName: cert.course?.category?.name,
+    
+    // Certificate content
+    certificateTitle: cert.certificateContent?.title,
+    placeholders: cert.certificateContent?.placeholders,
+    mainContents: cert.certificateContent?.mainContents,
+  }));
+
+  return formatPaginationResponse(transformedCertificates, total, page, limit);
 };
 
 const getCertificateByIdForAdmin = async (
@@ -430,28 +586,153 @@ const getCertificateByIdForAdmin = async (
   return certificate;
 };
 
-const getUserCertificates = async (userId: string) => {
+const getUserCertificates = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build the complete where clause manually
+  const whereQuery: any = {
+    userId: userId, // Always filter by the current user
+  };
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          courseShortDescription: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          instructorName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        certificateId: {
+          contains: options.searchTerm,
+          mode: 'insensitive' as const,
+        },
+      },
+    ];
+  }
+
+  // Add filter conditions
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  if (options.instructorName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      instructorName: options.instructorName,
+    };
+  }
+
+  // Date range filter for issue date
+  if (options.startDate || options.endDate) {
+    whereQuery.issueDate = {};
+    if (options.startDate) {
+      whereQuery.issueDate.gte = new Date(options.startDate);
+    }
+    if (options.endDate) {
+      whereQuery.issueDate.lte = new Date(options.endDate);
+    }
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.certificate.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
   const certificates = await prisma.certificate.findMany({
-    where: {
-      userId: userId,
-    },
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
     include: {
       course: {
         select: {
+          id: true,
           courseTitle: true,
           courseShortDescription: true,
+          courseLevel: true,
+          instructorName: true,
           courseThumbnail: true,
+          category: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+      certificateContent: {
+        select: {
+          title: true,
+          placeholders: true,
+          mainContents: true,
         },
       },
     },
-    orderBy: {
-      issueDate: 'desc',
-    },
   });
 
-  return certificates;
-};
+  // Transform data to include additional fields
+  const transformedCertificates = certificates.map(cert => ({
+    id: cert.id,
+    certificateId: cert.certificateId,
+    issueDate: cert.issueDate,
+    createdAt: cert.createdAt,
+    
+    // Course details
+    courseId: cert.courseId,
+    courseTitle: cert.course?.courseTitle,
+    courseShortDescription: cert.course?.courseShortDescription,
+    courseLevel: cert.course?.courseLevel,
+    instructorName: cert.course?.instructorName,
+    courseThumbnail: cert.course?.courseThumbnail,
+    categoryName: cert.course?.category?.name,
+    
+    // Certificate content
+    certificateTitle: cert.certificateContent?.title,
+    placeholders: cert.certificateContent?.placeholders,
+    mainContents: cert.certificateContent?.mainContents,
+  }));
 
+  return formatPaginationResponse(transformedCertificates, total, page, limit);
+};
 const getCertificateById = async (certificateId: string, userId?: string) => {
   
 

@@ -4,6 +4,7 @@ import catchAsync from '../../utils/catchAsync';
 import { certificateService } from './certificate.service';
 import AppError from '../../errors/AppError';
 import prisma from '../../utils/prisma';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 // certificate.controller.ts
 const issueCertificate = catchAsync(async (req, res) => {
@@ -54,13 +55,16 @@ const checkCompletion = catchAsync(async (req, res) => {
 
 const getCertificates = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await certificateService.getAllCertificatesFromDb(user.id);
+  const result = await certificateService.getAllCertificatesFromDb(user.id,
+    req.query as ISearchAndFilterOptions
+  );
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'All certificates retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 
@@ -83,13 +87,16 @@ const getACertificate = catchAsync(async (req, res) => {
 
 const getMyCertificates = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await certificateService.getUserCertificates(user.id);
+  const result = await certificateService.getUserCertificates(user.id,
+    req.query as ISearchAndFilterOptions
+  );
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Certificates retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 

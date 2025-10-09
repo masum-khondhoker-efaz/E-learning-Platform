@@ -3,6 +3,7 @@ import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { supportService } from './support.service';
 import { pickValidFields } from '../../utils/pickValidFields';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 
 const createSupport = catchAsync(async (req, res) => {
   const result = await supportService.createSupportIntoDb(req.body);
@@ -17,18 +18,8 @@ const createSupport = catchAsync(async (req, res) => {
 const getSupportList = catchAsync(async (req, res) => {
   const user = req.user as any;
 
-  const filters = pickValidFields(req.query, [
-        'page',
-        'limit',
-        'sortBy',
-        'sortOrder',
-        'searchTerm',
-        'status',
-        'subject',
-        'userEmail',
-        'userName',
-      ]);
-  const result = await supportService.getSupportListFromDb(user.id, filters);
+  
+  const result = await supportService.getSupportListFromDb(user.id, req.query as ISearchAndFilterOptions);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

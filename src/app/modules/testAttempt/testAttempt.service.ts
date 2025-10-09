@@ -4,11 +4,14 @@ import {
   PaymentStatus,
   QuestionType,
   ResponseStatus,
-  UserRoleEnum,
-  UserStatus,
 } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
+import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+import { 
+  calculatePagination, 
+  formatPaginationResponse 
+} from '../../utils/pagination';
 
 const createTestAttemptIntoDb = async (userId: string, data: any) => {
   const result = await prisma.testAttempt.create({
@@ -248,12 +251,234 @@ const submitTestAttemptIntoDb = async (userId: string, data: any) => {
   });
 };
 
-const getTestAttemptListFromDb = async (userId: string) => {
-  const result = await prisma.testAttempt.findMany();
-  if (result.length === 0) {
-    return { message: 'No testAttempt found' };
+
+
+const getTestAttemptListFromDb = async (userId: string,options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build the complete where clause manually
+  const whereQuery: any = {};
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        user: {
+          fullName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        user: {
+          email: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        test: {
+          title: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        test: {
+          section: {
+            course: {
+              courseTitle: {
+                contains: options.searchTerm,
+                mode: 'insensitive' as const,
+              },
+            },
+          },
+        },
+      },
+    ];
   }
-  return result;
+
+  // Add filter conditions
+  if (options.status) {
+    whereQuery.status = options.status;
+  }
+
+  if (options.isPassed !== undefined) {
+    whereQuery.isPassed = options.isPassed;
+  }
+
+  // Filter by score range
+  if (options.scoreMin !== undefined || options.scoreMax !== undefined) {
+    whereQuery.score = {};
+    if (options.scoreMin !== undefined) {
+      whereQuery.score.gte = Number(options.scoreMin);
+    }
+    if (options.scoreMax !== undefined) {
+      whereQuery.score.lte = Number(options.scoreMax);
+    }
+  }
+
+  // Filter by percentage range
+  if (options.percentageMin !== undefined || options.percentageMax !== undefined) {
+    whereQuery.percentage = {};
+    if (options.percentageMin !== undefined) {
+      whereQuery.percentage.gte = Number(options.percentageMin);
+    }
+    if (options.percentageMax !== undefined) {
+      whereQuery.percentage.lte = Number(options.percentageMax);
+    }
+  }
+
+  // Filter by course level
+  if (options.courseLevel) {
+    whereQuery.test = {
+      ...whereQuery.test,
+      section: {
+        course: {
+          courseLevel: options.courseLevel,
+        },
+      },
+    };
+  }
+
+  // Filter by category
+  if (options.categoryName) {
+    whereQuery.test = {
+      ...whereQuery.test,
+      section: {
+        course: {
+          category: {
+            name: options.categoryName,
+          },
+        },
+      },
+    };
+  }
+
+  // Date range filter for attempt date
+  if (options.startDate || options.endDate) {
+    whereQuery.completedAt = {};
+    if (options.startDate) {
+      whereQuery.completedAt.gte = new Date(options.startDate);
+    }
+    if (options.endDate) {
+      whereQuery.completedAt.lte = new Date(options.endDate);
+    }
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.testAttempt.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
+  const testAttempts = await prisma.testAttempt.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          image: true,
+        },
+      },
+      test: {
+        select: {
+          id: true,
+          title: true,
+          totalMarks: true,
+          passingScore: true,
+          section: {
+            select: {
+              id: true,
+              title: true,
+              course: {
+                select: {
+                  id: true,
+                  courseTitle: true,
+                  courseLevel: true,
+                  category: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        select: {
+          id: true,
+          questionType: true,
+          isCorrect: true,
+          marksObtained: true,
+          status: true,
+        },
+      },
+      _count: {
+        select: {
+          responses: true,
+        },
+      },
+    },
+  });
+
+  // Transform data to include additional calculated fields
+  const transformedAttempts = testAttempts.map(attempt => ({
+    id: attempt.id,
+    userId: attempt.userId,
+    testId: attempt.testId,
+    score: attempt.score,
+    percentage: attempt.percentage,
+    isPassed: attempt.isPassed,
+    totalMarks: attempt.totalMarks,
+    timeSpent: attempt.timeSpent,
+    status: attempt.status,
+    completedAt: attempt.completedAt,
+    createdAt: attempt.createdAt,
+    
+    // User details
+    userFullName: attempt.user?.fullName,
+    userEmail: attempt.user?.email,
+    userImage: attempt.user?.image,
+    
+    // Test details
+    testTitle: attempt.test?.title,
+    testTotalMarks: attempt.test?.totalMarks,
+    testPassingScore: attempt.test?.passingScore,
+    
+    // Course details
+    sectionId: attempt.test?.section?.id,
+    sectionTitle: attempt.test?.section?.title,
+    courseId: attempt.test?.section?.course?.id,
+    courseTitle: attempt.test?.section?.course?.courseTitle,
+    courseLevel: attempt.test?.section?.course?.courseLevel,
+    categoryName: attempt.test?.section?.course?.category?.name,
+    
+    // Response statistics
+    totalResponses: attempt._count.responses,
+    correctResponses: attempt.responses.filter(r => r.isCorrect === true).length,
+    incorrectResponses: attempt.responses.filter(r => r.isCorrect === false).length,
+    pendingResponses: attempt.responses.filter(r => r.status === 'SUBMITTED').length,
+  }));
+
+  return formatPaginationResponse(transformedAttempts, total, page, limit);
 };
 
 const getTestAttemptByIdFromDb = async (
@@ -462,32 +687,221 @@ const gradeShortAnswers = async (
   });
 };
 
-const getMyTestAttemptsFromDb = async (userId: string) => {
-  const result = await prisma.testAttempt.findMany({
-    where: { userId: userId },
+const getMyTestAttemptsFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build the complete where clause manually
+  const whereQuery: any = {
+    userId: userId, // Always filter by the current user
+  };
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        test: {
+          title: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        test: {
+          section: {
+            course: {
+              courseTitle: {
+                contains: options.searchTerm,
+                mode: 'insensitive' as const,
+              },
+            },
+          },
+        },
+      },
+      {
+        test: {
+          section: {
+            title: {
+              contains: options.searchTerm,
+              mode: 'insensitive' as const,
+            },
+          },
+        },
+      },
+    ];
+  }
+
+  // Add filter conditions
+  if (options.status) {
+    whereQuery.status = options.status;
+  }
+
+  if (options.isPassed !== undefined) {
+    whereQuery.isPassed = options.isPassed;
+  }
+
+  // Filter by score range
+  if (options.scoreMin !== undefined || options.scoreMax !== undefined) {
+    whereQuery.score = {};
+    if (options.scoreMin !== undefined) {
+      whereQuery.score.gte = Number(options.scoreMin);
+    }
+    if (options.scoreMax !== undefined) {
+      whereQuery.score.lte = Number(options.scoreMax);
+    }
+  }
+
+  // Filter by percentage range
+  if (options.percentageMin !== undefined || options.percentageMax !== undefined) {
+    whereQuery.percentage = {};
+    if (options.percentageMin !== undefined) {
+      whereQuery.percentage.gte = Number(options.percentageMin);
+    }
+    if (options.percentageMax !== undefined) {
+      whereQuery.percentage.lte = Number(options.percentageMax);
+    }
+  }
+
+  // Filter by course level
+  if (options.courseLevel) {
+    whereQuery.test = {
+      ...whereQuery.test,
+      section: {
+        course: {
+          courseLevel: options.courseLevel,
+        },
+      },
+    };
+  }
+
+  // Filter by category
+  if (options.categoryName) {
+    whereQuery.test = {
+      ...whereQuery.test,
+      section: {
+        course: {
+          category: {
+            name: options.categoryName,
+          },
+        },
+      },
+    };
+  }
+
+  // Date range filter for attempt date
+  if (options.startDate || options.endDate) {
+    whereQuery.completedAt = {};
+    if (options.startDate) {
+      whereQuery.completedAt.gte = new Date(options.startDate);
+    }
+    if (options.endDate) {
+      whereQuery.completedAt.lte = new Date(options.endDate);
+    }
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.testAttempt.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
+  const testAttempts = await prisma.testAttempt.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
     include: {
       test: {
         select: {
+          id: true,
           title: true,
           totalMarks: true,
           passingScore: true,
-          section: { select: { courseId: true }}
+          section: {
+            select: {
+              id: true,
+              title: true,
+              courseId: true,
+              course: {
+                select: {
+                  id: true,
+                  courseTitle: true,
+                  courseLevel: true,
+                  category: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        select: {
+          id: true,
+          questionType: true,
+          isCorrect: true,
+          marksObtained: true,
+          status: true,
+        },
+      },
+      _count: {
+        select: {
+          responses: true,
         },
       },
     },
-    orderBy: {
-      createdAt: 'desc',
-    },
   });
 
-  if (result.length === 0) {
-    return { message: 'No test attempts found' };
-  }
-  // Show only graded attempts
-  const gradedAttempts = result.filter(
-    attempt => attempt.status === AttemptStatus.GRADED,
-  );
-  return gradedAttempts;
+  // Transform data to include additional calculated fields
+  const transformedAttempts = testAttempts.map(attempt => ({
+    id: attempt.id,
+    testId: attempt.testId,
+    score: attempt.score,
+    percentage: attempt.percentage,
+    isPassed: attempt.isPassed,
+    totalMarks: attempt.totalMarks,
+    timeSpent: attempt.timeSpent,
+    status: attempt.status,
+    completedAt: attempt.completedAt,
+    createdAt: attempt.createdAt,
+    
+    // Test details
+    testTitle: attempt.test?.title,
+    testTotalMarks: attempt.test?.totalMarks,
+    testPassingScore: attempt.test?.passingScore,
+    
+    // Course details
+    sectionId: attempt.test?.section?.id,
+    sectionTitle: attempt.test?.section?.title,
+    courseId: attempt.test?.section?.course?.id,
+    courseTitle: attempt.test?.section?.course?.courseTitle,
+    courseLevel: attempt.test?.section?.course?.courseLevel,
+    categoryName: attempt.test?.section?.course?.category?.name,
+    
+    // Response statistics
+    totalResponses: attempt._count.responses,
+    correctResponses: attempt.responses.filter(r => r.isCorrect === true).length,
+    incorrectResponses: attempt.responses.filter(r => r.isCorrect === false).length,
+    pendingResponses: attempt.responses.filter(r => r.status === 'SUBMITTED').length,
+    
+    // Performance indicators
+    grade: attempt.isPassed ? 'PASSED' : 'FAILED',
+    accuracyRate: attempt._count.responses > 0 
+      ? (attempt.responses.filter(r => r.isCorrect === true).length / attempt._count.responses * 100).toFixed(2)
+      : '0.00',
+  }));
+
+  return formatPaginationResponse(transformedAttempts, total, page, limit);
 };
 
 const getMyTestAttemptByIdFromDb = async (

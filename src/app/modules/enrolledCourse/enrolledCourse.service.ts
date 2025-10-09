@@ -487,72 +487,359 @@ const getEnrolledCourseByStudentIdFromDb = async (
   };
 };
 
-const getMyEnrolledCoursesFromDb = async (userId: string) => {
+const getMyEnrolledCoursesFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build the complete where clause manually
+  const whereQuery: any = {
+    userId: userId, // Always filter by the current user
+    paymentStatus: PaymentStatus.COMPLETED, // Only completed payments
+  };
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          courseShortDescription: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          instructorName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          category: {
+            name: {
+              contains: options.searchTerm,
+              mode: 'insensitive' as const,
+            },
+          },
+        },
+      },
+    ];
+  }
+
+  // Add filter conditions
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  if (options.certificate !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      certificate: options.certificate,
+    };
+  }
+
+  if (options.lifetimeAccess !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      lifetimeAccess: options.lifetimeAccess,
+    };
+  }
+
+  if (options.instructorName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      instructorName: options.instructorName,
+    };
+  }
+
+  // Handle price range filters
+  if (options.priceMin !== undefined || options.priceMax !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      price: {
+        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
+        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+      },
+    };
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.enrolledCourse.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
   const enrolledCourses = await prisma.enrolledCourse.findMany({
-    where: { userId, paymentStatus: PaymentStatus.COMPLETED },
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
     select: {
       id: true,
       courseId: true,
       paymentStatus: true,
       enrolledAt: true,
-      course: { select: { id: true, courseTitle: true, price: true } },
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          courseShortDescription: true,
+          courseLevel: true,
+          price: true,
+          discountPrice: true,
+          instructorName: true,
+          courseThumbnail: true,
+          certificate: true,
+          lifetimeAccess: true,
+          totalSections: true,
+          totalLessons: true,
+          totalDuration: true,
+          category: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
     },
   });
 
-  if (!enrolledCourses.length) {
-    return { message: 'No enrolledCourse found for this student' };
-  }
-
-  const courseProgressList =
-    await studentProgressService.getAllCourseProgress(userId);
+  // Get progress data for all courses
+  const courseProgressList = await studentProgressService.getAllCourseProgress(userId);
   const progressMap = new Map<string, (typeof courseProgressList)[number]>();
   courseProgressList.forEach(progress => {
     progressMap.set(progress.courseId, progress);
   });
 
-  return enrolledCourses.map(enrolled => ({
+  // Transform data to include progress
+  const transformedData = enrolledCourses.map(enrolled => ({
     id: enrolled.id,
     courseId: enrolled.courseId,
     paymentStatus: enrolled.paymentStatus,
     enrolledAt: enrolled.enrolledAt,
     courseTitle: enrolled.course?.courseTitle,
+    courseShortDescription: enrolled.course?.courseShortDescription,
+    courseLevel: enrolled.course?.courseLevel,
     coursePrice: enrolled.course?.price,
+    discountPrice: enrolled.course?.discountPrice,
+    instructorName: enrolled.course?.instructorName,
+    courseThumbnail: enrolled.course?.courseThumbnail,
+    certificate: enrolled.course?.certificate,
+    lifetimeAccess: enrolled.course?.lifetimeAccess,
+    totalSections: enrolled.course?.totalSections,
+    totalLessons: enrolled.course?.totalLessons,
+    totalDuration: enrolled.course?.totalDuration,
+    categoryName: enrolled.course?.category?.name,
     progress: progressMap.get(enrolled.courseId) || {
       completedLessons: 0,
       totalLessons: 0,
       progressPercentage: 0,
     },
   }));
+
+  return formatPaginationResponse(transformedData, total, page, limit);
 };
 
-const getMyEnrolledCoursesForEmployeeFromDb = async (userId: string) => {
+const getMyEnrolledCoursesForEmployeeFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build the complete where clause manually
+  const whereQuery: any = {
+    userId: userId, // Always filter by the current user
+    paymentStatus: PaymentStatus.COMPLETED, // Only completed payments
+  };
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          courseShortDescription: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          instructorName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          category: {
+            name: {
+              contains: options.searchTerm,
+              mode: 'insensitive' as const,
+            },
+          },
+        },
+      },
+    ];
+  }
+
+  // Add filter conditions
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  if (options.certificate !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      certificate: options.certificate,
+    };
+  }
+
+  if (options.lifetimeAccess !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      lifetimeAccess: options.lifetimeAccess,
+    };
+  }
+
+  if (options.instructorName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      instructorName: options.instructorName,
+    };
+  }
+
+  // Handle price range filters
+  if (options.priceMin !== undefined || options.priceMax !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      price: {
+        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
+        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+      },
+    };
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  // Fetch total count for pagination
+  const total = await prisma.employeeCredential.count({ where: whereQuery });
+
+  if (total === 0) {
+    return formatPaginationResponse([], 0, page, limit);
+  }
+
+  // Fetch paginated data
   const result = await prisma.employeeCredential.findMany({
-    where: { userId: userId, paymentStatus: PaymentStatus.COMPLETED },
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
     select: {
       id: true,
       paymentStatus: true,
       sentAt: true,
+      progress: true,
+      isCompleted: true,
       course: {
         select: {
           id: true,
           courseTitle: true,
+          courseShortDescription: true,
+          courseLevel: true,
           price: true,
+          discountPrice: true,
+          instructorName: true,
+          courseThumbnail: true,
+          certificate: true,
+          lifetimeAccess: true,
+          totalSections: true,
+          totalLessons: true,
+          totalDuration: true,
+          category: {
+            select: {
+              name: true,
+            },
+          },
         },
       },
     },
   });
 
-  if (result.length === 0) {
-    return { message: 'No enrolledCourse found for this employee' };
-  }
-  return result.map(credential => ({
+  // Transform data to match expected format
+  const transformedData = result.map(credential => ({
     id: credential.id,
     courseId: credential.course?.id,
     courseTitle: credential.course?.courseTitle,
+    courseShortDescription: credential.course?.courseShortDescription,
+    courseLevel: credential.course?.courseLevel,
     coursePrice: credential.course?.price,
+    discountPrice: credential.course?.discountPrice,
+    instructorName: credential.course?.instructorName,
+    courseThumbnail: credential.course?.courseThumbnail,
+    certificate: credential.course?.certificate,
+    lifetimeAccess: credential.course?.lifetimeAccess,
+    totalSections: credential.course?.totalSections,
+    totalLessons: credential.course?.totalLessons,
+    totalDuration: credential.course?.totalDuration,
+    categoryName: credential.course?.category?.name,
     paymentStatus: credential.paymentStatus,
     enrolledAt: credential.sentAt,
+    progress: credential.progress || 0,
+    isCompleted: credential.isCompleted || false,
   }));
+
+  return formatPaginationResponse(transformedData, total, page, limit);
 };
 
 const getMyEnrolledCourseByIdFromDb = async (
@@ -619,50 +906,168 @@ const getMyEnrolledCourseByIdFromDbForEmployee = async (
   return result;
 };
 
-const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum) => {
+const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum, options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
   const isEmployee = role === UserRoleEnum.EMPLOYEE;
 
-  let orders;
+  // Build the complete where clause manually
+  const whereQuery: any = {
+    userId: userId, // Always filter by the current user
+  };
+
+  // Add search conditions
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+    ];
+  }
+
+  // Add filter conditions
+  if (options.paymentStatus) {
+    whereQuery.paymentStatus = options.paymentStatus;
+  }
+
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  // Handle price range filters
+  if (options.priceMin !== undefined || options.priceMax !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      price: {
+        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
+        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+      },
+    };
+  }
+
+  // Date range filter for orders
+  if (options.startDate || options.endDate) {
+    const dateField = isEmployee ? 'sentAt' : 'enrolledAt';
+    whereQuery[dateField] = {};
+    if (options.startDate) {
+      whereQuery[dateField].gte = new Date(options.startDate);
+    }
+    if (options.endDate) {
+      whereQuery[dateField].lte = new Date(options.endDate);
+    }
+  }
+
+  // Sorting
+  const orderBy = {
+    [sortBy]: sortOrder,
+  };
+
+  let total: number;
+  let orders: any[];
+
   if (isEmployee) {
+    // Get total count for employees
+    total = await prisma.employeeCredential.count({ where: whereQuery });
+
+    if (total === 0) {
+      return formatPaginationResponse([], 0, page, limit);
+    }
+
+    // Fetch employee orders
     orders = await prisma.employeeCredential.findMany({
-      where: { userId },
+      where: whereQuery,
+      skip,
+      take: limit,
+      orderBy,
       select: {
         id: true,
         courseId: true,
         paymentStatus: true,
         sentAt: true,
-        course: { select: { id: true, courseTitle: true, price: true } },
+        course: {
+          select: {
+            id: true,
+            courseTitle: true,
+            price: true,
+            courseLevel: true,
+            category: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
   } else {
+    // Get total count for students
+    total = await prisma.enrolledCourse.count({ where: whereQuery });
+
+    if (total === 0) {
+      return formatPaginationResponse([], 0, page, limit);
+    }
+
+    // Fetch student orders
     orders = await prisma.enrolledCourse.findMany({
-      where: { userId },
+      where: whereQuery,
+      skip,
+      take: limit,
+      orderBy,
       select: {
         id: true,
         courseId: true,
         paymentStatus: true,
         enrolledAt: true,
         invoiceId: true,
-        course: { select: { id: true, courseTitle: true, price: true } },
+        course: {
+          select: {
+            id: true,
+            courseTitle: true,
+            price: true,
+            courseLevel: true,
+            category: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
   }
 
-  if (orders.length === 0) {
-    return { message: `No orders found for this ${isEmployee ? 'employee' : 'student'}` };
-  }
-
-  return orders.map(order => ({
+  // Transform data to consistent format
+  const transformedOrders = orders.map(order => ({
     id: order.id,
     courseId: order.courseId,
     paymentStatus: order.paymentStatus,
     enrolledAt: isEmployee
-      ? ('sentAt' in order ? order.sentAt ?? null : null)
-      : ('enrolledAt' in order ? order.enrolledAt ?? null : null),
-    invoiceId: isEmployee ? undefined : ('invoiceId' in order ? order.invoiceId : undefined),
+      ? (order.sentAt ?? null)
+      : (order.enrolledAt ?? null),
+    invoiceId: isEmployee ? undefined : order.invoiceId,
     courseTitle: order.course?.courseTitle,
     coursePrice: order.course?.price,
+    courseLevel: order.course?.courseLevel,
+    categoryName: order.course?.category?.name,
   }));
+
+  return formatPaginationResponse(transformedOrders, total, page, limit);
 };
 
 const getMyLearningHistoryFromDb = async (userId: string, role: UserRoleEnum) => {
