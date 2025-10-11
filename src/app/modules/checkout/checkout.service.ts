@@ -78,7 +78,7 @@ const createCheckoutIntoDbForStudent = async (
             select: {
               id: true,
               courseTitle: true,
-              courseShortDescription:true,
+              courseShortDescription: true,
               price: true,
               discountPrice: true,
             },
@@ -101,7 +101,10 @@ const createCheckoutIntoDbForCompany = async (
   data: CreateCheckoutPayload,
 ) => {
   if (!companyId) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'companyId is required for company checkout');
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'companyId is required for company checkout',
+    );
   }
 
   // 1. Load the cart owned by this company user (Cart.userId is the owner)
@@ -111,7 +114,7 @@ const createCheckoutIntoDbForCompany = async (
   });
 
   if (!cart || !cart.items || cart.items.length === 0) {
-    return {message: 'Cart is empty'};
+    return { message: 'Cart is empty' };
   }
 
   // 2. Decide which cart items will be checked out
@@ -125,11 +128,14 @@ const createCheckoutIntoDbForCompany = async (
       );
     }
     const courseIdSet = new Set(data.courseIds);
-    itemsToCheckout = cart.items.filter((ci) => courseIdSet.has(ci.courseId));
+    itemsToCheckout = cart.items.filter(ci => courseIdSet.has(ci.courseId));
   }
 
   if (!itemsToCheckout.length) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items selected for checkout');
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'No valid cart items selected for checkout',
+    );
   }
 
   // 3. Compute total amount from the selected items
@@ -142,20 +148,23 @@ const createCheckoutIntoDbForCompany = async (
   //    - create Checkout
   //    - create CheckoutItem rows
   //    - remove the purchased CartItem rows
-  const createdCheckout = await prisma.$transaction(async (tx) => {
+  const createdCheckout = await prisma.$transaction(async tx => {
     // Re-fetch cart items inside tx to avoid race conditions
     const txCart = await tx.cart.findUnique({
       where: { id: cart.id },
       include: { items: true },
     });
     if (!txCart) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'Cart not found during transaction');
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Cart not found during transaction',
+      );
     }
 
     // Validate selected item ids still belong to cart
-    const txItemIds = new Set(txCart.items.map((it) => it.id));
-    const selectedItemIds = itemsToCheckout.map((it) => it.id);
-    const missing = selectedItemIds.filter((id) => !txItemIds.has(id));
+    const txItemIds = new Set(txCart.items.map(it => it.id));
+    const selectedItemIds = itemsToCheckout.map(it => it.id);
+    const missing = selectedItemIds.filter(id => !txItemIds.has(id));
     if (missing.length > 0) {
       throw new AppError(
         httpStatus.CONFLICT,
@@ -168,14 +177,14 @@ const createCheckoutIntoDbForCompany = async (
       data: {
         userId: companyId,
         totalAmount,
-        status: CheckoutStatus.PENDING
+        status: CheckoutStatus.PENDING,
       },
     });
 
     // Create CheckoutItem rows (one per selected cart item)
     // Using createMany for performance
     await tx.checkoutItem.createMany({
-      data: itemsToCheckout.map((it) => ({
+      data: itemsToCheckout.map(it => ({
         checkoutId: checkout.id,
         courseId: it.courseId,
       })),
@@ -201,7 +210,7 @@ const createCheckoutIntoDbForCompany = async (
             select: {
               id: true,
               courseTitle: true,
-              courseShortDescription:true,
+              courseShortDescription: true,
               price: true,
               discountPrice: true,
             },
@@ -211,7 +220,6 @@ const createCheckoutIntoDbForCompany = async (
     },
   });
 };
-
 
 const PASSWORD_LENGTH = 8;
 const EMAIL_TRIES = 10;
@@ -279,13 +287,13 @@ async function generateUniqueEmployeeEmail(tx: any, companyEmail: string) {
  *   (employee credentials created with hashed password stored in DB; plain password emailed)
  */
 const markCheckoutPaid = async (
-  // userId: string,
+  userId: string,
   checkoutId: string,
   paymentId: string,
 ) => {
   // 1) Fetch checkout and its items
   const checkout = await prisma.checkout.findUnique({
-    where: { id: checkoutId },
+    where: { id: checkoutId, userId, status: CheckoutStatus.PENDING },
     include: {
       items: { include: { course: true } },
       user: true,
@@ -304,11 +312,11 @@ const markCheckoutPaid = async (
 
   // 2) Individual student checkout
   if (checkout.user?.role === UserRoleEnum.STUDENT) {
-    return await prisma.$transaction(async (tx) => {
+    return await prisma.$transaction(async tx => {
       // update checkout status
       await tx.checkout.update({
         where: { id: checkoutId },
-        data: { status: CheckoutStatus.PAID, paymentId },
+        data: { status: CheckoutStatus.PAID },
       });
 
       // enroll for each course if not already
@@ -341,11 +349,11 @@ const markCheckoutPaid = async (
       courseId: string;
     }> = [];
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async tx => {
       // mark checkout paid
       await tx.checkout.update({
-        where: { id: checkoutId },
-        data: { status: CheckoutStatus.PAID, paymentId },
+        where: { id: checkoutId, userId, status: CheckoutStatus.PENDING },
+        data: { status: CheckoutStatus.PAID },
       });
 
       // create CompanyPurchase
@@ -353,7 +361,10 @@ const markCheckoutPaid = async (
         where: { userId: checkout.userId },
       });
       if (!company) {
-        throw new AppError(httpStatus.BAD_REQUEST, 'Company not found for this checkout');
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          'Company not found for this checkout',
+        );
       }
 
       const purchase = await tx.companyPurchase.create({
@@ -408,9 +419,11 @@ const markCheckoutPaid = async (
       try {
         const company = await prisma.company.findFirst({
           where: { userId: checkout.userId },
-          include: { User: {
-            select: { email: true }
-          } },
+          include: {
+            User: {
+              select: { email: true, fullName: true },
+            },
+          },
         });
         const recipient = company?.User.email;
         if (!recipient) {
@@ -419,13 +432,54 @@ const markCheckoutPaid = async (
         }
 
         const html = `
-          <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-            <h2 style="color: #46BEF2;">Your Course Access</h2>
-            <p>A credential has been created for <strong>${c.courseTitle}</strong>.</p>
-            <p>Email: <strong>${c.loginEmail}</strong></p>
-            <p>Password: <strong>${c.plainPassword}</strong></p>
+  <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+    <table width="100%" style="border-collapse: collapse;">
+      <!-- Header -->
+      <tr>
+        <td style="background-color: #46BEF2; padding: 20px; text-align: center; color: #000000; border-radius: 10px 10px 0 0;">
+          <h2 style="margin: 0; font-size: 24px;">Course Access Details</h2>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td style="padding: 20px;">
+          <p style="font-size: 16px; margin: 0;">Hello <strong>${company.User.fullName}</strong>,</p>
+          <p style="font-size: 16px;">A new credential has been created for your course:</p>
+
+          <div style="text-align: center; margin: 20px 0;">
+            <p style="font-size: 18px; margin: 5px 0;">
+              <strong>Course:</strong> ${c.courseTitle}
+            </p>
+            <p style="font-size: 16px; margin: 5px 0;">
+              <strong>Login Email:</strong> ${c.loginEmail}
+            </p>
+            <p style="font-size: 16px; margin: 5px 0;">
+              <strong>Password:</strong> ${c.plainPassword}
+            </p>
           </div>
-        `;
+
+          <p style="font-size: 14px; color: #555;">
+            Please use these credentials to log in and access your course materials.
+          </p>
+
+          <p style="font-size: 14px; color: #555; margin-top: 20px;">
+            If you did not request this course or have any issues, please contact our support team.
+          </p>
+
+          <p style="font-size: 16px; margin-top: 20px;">Thank you,<br>E-learning Team</p>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px;">
+          <p style="margin: 0;">&copy; ${new Date().getFullYear()} E-learning Team. All rights reserved.</p>
+        </td>
+      </tr>
+    </table>
+  </div>
+`;
 
         await emailSender(
           `Course Credentials for ${c.courseTitle}`,

@@ -105,7 +105,7 @@ const markCheckoutPaid = catchAsync(async (req, res) => {
   const { checkoutId, paymentId } = req.body;
 
   const result = await checkoutService.markCheckoutPaid(
-    // user.id,
+    user.id,
     checkoutId,
     paymentId,
   );

@@ -343,9 +343,10 @@ model Notification {
 model Payment {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
   userId          String        @db.ObjectId
-  checkoutId      String        @db.ObjectId
+  checkoutId      String        @unique @db.ObjectId
   paymentIntentId String?
   paymentMethodId String?
+  paymentMethod   String?
   paymentAmount   Float
   paymentDate     DateTime      @default(now())
   amountProvider  String
@@ -680,7 +681,6 @@ model Checkout {
   userId      String         @db.ObjectId
   totalAmount Float
   status      CheckoutStatus @default(PENDING)
-  paymentId   String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
@@ -693,9 +693,11 @@ model Checkout {
 }
 
 model CheckoutItem {
-  id         String @id @default(auto()) @map("_id") @db.ObjectId
-  checkoutId String @db.ObjectId
-  courseId   String @db.ObjectId
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  checkoutId String   @db.ObjectId
+  courseId   String   @db.ObjectId
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // Relationships
   checkout Checkout @relation(fields: [checkoutId], references: [id])

@@ -85,6 +85,26 @@ const authorizePaymentWithStripeCheckout = async (
   if (!customerDetails) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Customer not found');
   }
+  //checkout exists and belongs to user
+  const findCheckout = await prisma.checkout.findFirst({
+    where: {
+      id: checkoutId,
+      userId: userId,
+      status: CheckoutStatus.PENDING,
+    },
+    include: { items: {
+      include: { course: {
+        select: { courseTitle: true, id: true}
+      } }
+    } },
+  });
+
+  if (!findCheckout) {
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      'Checkout not found or already paid',
+    );
+  }
 
   // Ensure Stripe Customer exists
   let customerId = customerDetails.stripeCustomerId;
@@ -101,37 +121,71 @@ const authorizePaymentWithStripeCheckout = async (
     customerId = stripeCustomer.id;
   }
 
-  // Retrieve checkout details
-  const findCheckout = await prisma.checkout.findUnique({
-    where: { id: checkoutId },
-  });
-
-  if (!findCheckout) {
-    throw new AppError(httpStatus.NOT_FOUND, 'Checkout not found');
-  }
+ 
 
   // Create Stripe Checkout Session (supports Card + P24)
   const session = await stripe.checkout.sessions.create({
-    payment_method_types: ['card', 'p24'],
-    line_items: [
-      {
-        price_data: {
-          currency: 'pln',
-          product_data: { name: `Payment for checkout ${checkoutId}` },
-          unit_amount: Math.round(findCheckout.totalAmount * 100), // PLN to grosze
+  payment_method_types: ['card', 'p24'],
+  line_items: [
+    {
+      price_data: {
+        currency: 'pln',
+        product_data: {
+          name: `Courses: ${findCheckout.items.map(item => item.course.courseTitle).join(', ')}`,
+          description: `Access to ${findCheckout.items.map(item => item.course.courseTitle).join(', ')} course content`,
         },
-        quantity: 1,
+        unit_amount: Math.round(findCheckout.totalAmount * 100),
       },
-    ],
-    mode: 'payment',
-    customer: customerId,
-    success_url: `${config.frontend_base_url}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${config.frontend_base_url}/payment-cancel`,
-    metadata: {
-      userId,
-      checkoutId,
+      quantity: 1,
     },
-  });
+  ],
+  mode: 'payment',
+  customer: customerId,
+  success_url: `${config.frontend_base_url}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+  cancel_url: `${config.frontend_base_url}/payment-cancel`,
+  metadata: {
+    userId,
+    checkoutId,
+    courseTitle: findCheckout.items.map(item => item.course.courseTitle).join(', '),
+  },
+});
+
+
+  // existing payment intent
+  // const existingPayment = await prisma.payment.findFirst({
+  //   where: {
+  //     userId,
+  //     checkoutId,
+  //     status: PaymentStatus.PENDING,
+  //   },
+  // });
+
+  // if (existingPayment) {
+  //   // update payment intent id
+  //   await prisma.payment.update({
+  //     where: {
+  //       id: existingPayment.id,
+  //     },
+  //     data: {
+  //       amountProvider: session.customer as string,
+  //     },
+  //   });
+  //   return { redirectUrl: session.url };
+  // }
+
+  // //create payment record in db with pending status
+  // const payment = await prisma.payment.create({
+  //   data: {
+  //     userId,
+  //     checkoutId,
+  //     paymentAmount: findCheckout.totalAmount,
+  //     status: PaymentStatus.PENDING,
+  //     amountProvider: session.customer as string,
+  //   },
+  // });
+  // if(!payment) {
+  //   throw new AppError(httpStatus.BAD_REQUEST, 'Payment creation failed');
+  // }
 
   // Return URL to redirect user to Stripe-hosted payment page
   return { redirectUrl: session.url };
