@@ -114,7 +114,8 @@ const getCourseList = catchAsync(async (req, res) => {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Course list retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 
@@ -215,7 +216,6 @@ const updateCourse = catchAsync(async (req, res) => {
     data: result,
   });
 });
-
 
 
 const deleteCourse = catchAsync(async (req, res) => {
