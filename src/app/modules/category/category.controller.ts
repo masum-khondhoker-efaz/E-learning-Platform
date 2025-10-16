@@ -17,7 +17,7 @@ const createCategory = catchAsync(async (req, res) => {
 
 const getCategoryList = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await categoryService.getCategoryListFromDb(user.id,
+  const result = await categoryService.getCategoryListFromDb(
     req.query as ISearchAndFilterOptions
   );
   sendResponse(res, {
@@ -31,7 +31,7 @@ const getCategoryList = catchAsync(async (req, res) => {
 
 const getCategoryById = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await categoryService.getCategoryByIdFromDb(user.id, req.params.id);
+  const result = await categoryService.getCategoryByIdFromDb( req.params.id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,

@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 const createSchema = z.object({
   body: z.object({
-     all: z.boolean().optional(), // checkout all items if true
+    all: z.boolean().optional(), // checkout all items if true
     courseIds: z.array(z.string()).optional(), // specific courseIds for partial checkout
-    }),
+  }),
 });
 
 const markCheckoutSchema = z.object({
@@ -20,13 +20,13 @@ const markCheckoutSchema = z.object({
 
 const updateSchema = z.object({
   body: z.object({
-     all: z.boolean().optional(), // checkout all items if true
+    all: z.boolean().optional(), // checkout all items if true
     courseIds: z.array(z.string()).optional(), // specific courseIds for partial checkout
-    }),
+  }),
 });
 
 export const checkoutValidation = {
-createSchema,
-updateSchema,
-markCheckoutSchema,
+  createSchema,
+  updateSchema,
+  markCheckoutSchema,
 };

@@ -40,57 +40,69 @@ const registerUserIntoDB = async (payload: {
   }
 
   const { email, fullName, password, ...rest } = payload;
-  // hash password
   const hashedPassword = await bcrypt.hash(payload.password, 12);
 
-  // create user
-  const user = await prisma.user.create({
-    data: {
-      fullName: fullName,
-      email: email,
-      password: hashedPassword,
-      isVerified: false, // mark as unverified until OTP confirmed
-    },
-  });
+  let user;
+  let company;
 
-  if (!user) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'User not created!');
-  }
-
-  if (
-    payload.companyName &&
-    payload.companyEmail &&
-    payload.companyAddress &&
-    payload.companyVatId
-  ) {
-    // create company
-    const company = await prisma.company.create({
+  // Use transaction for atomicity and rollback
+  await prisma.$transaction(async (tx) => {
+    // create user
+    user = await tx.user.create({
       data: {
-        userId: user.id,
-        companyName: payload.companyName,
-        companyEmail: payload.companyEmail,
-        companyAddress: payload.companyAddress,
-        companyVatId: payload.companyVatId,
+        fullName: fullName,
+        email: email,
+        password: hashedPassword,
+        isVerified: false,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
       },
     });
-    if (!company) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'Company not created!');
+
+    if (!user) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'User not created!');
     }
 
-    //update user role to company
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { role: UserRoleEnum.COMPANY },
-    });
-  }
+    if (
+      payload.companyName &&
+      payload.companyEmail &&
+      payload.companyAddress &&
+      payload.companyVatId
+    ) {
+      // create company
+      company = await tx.company.create({
+        data: {
+          userId: user.id,
+          companyName: payload.companyName,
+          companyEmail: payload.companyEmail,
+          companyAddress: payload.companyAddress,
+          companyVatId: payload.companyVatId,
+        },
+      });
+      if (!company) {
+        throw new AppError(httpStatus.BAD_REQUEST, 'Company not created!');
+      }
+
+      // update user role to company
+      await tx.user.update({
+        where: { id: user.id },
+        data: { role: UserRoleEnum.COMPANY },
+      });
+    }
+  });
 
   // generate OTP + JWT token
-  const { otp, otpToken } = generateOtpToken(user.email);
+  const { otp, otpToken } = generateOtpToken(user!.email);
+
 
   // send OTP email
   await emailSender(
     'Verify Your Email',
-    user.email,
+    user!.email,
     `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
         <table width="100%" style="border-collapse: collapse;">
           <tr>
@@ -100,7 +112,7 @@ const registerUserIntoDB = async (payload: {
           </tr>
           <tr>
             <td style="padding: 20px;">
-              <p style="font-size: 16px; margin: 0;">Hello <strong>${user.fullName}</strong>,</p>
+              <p style="font-size: 16px; margin: 0;">Hello <strong>${user!.fullName}</strong>,</p>
               <p style="font-size: 16px;">Please verify your email.</p>
               <div style="text-align: center; margin: 20px 0;">
                 <p style="font-size: 18px;">Your OTP is: <span style="font-weight:bold">${otp}</span><br/> This OTP will expire in 5 minutes.</p>
@@ -480,50 +492,52 @@ const verifyOtpInDB = async (bodyData: {
   otp: number;
   otpToken: string; // <-- token from frontend
 }) => {
-  const userData = await prisma.user.findUnique({
-    where: { email: bodyData.email },
-  });
+  await prisma.$transaction(async (tx) => {
+    const userData = await tx.user.findUnique({
+      where: { email: bodyData.email },
+    });
 
-  if (!userData) {
-    throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
-  }
+    if (!userData) {
+      throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
+    }
 
-  // ✅ use JWT util to validate OTP
-  const isValid = verifyOtp(bodyData.email, bodyData.otp, bodyData.otpToken);
-  if (!isValid) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Invalid or expired OTP!');
-  }
+    // ✅ use JWT util to validate OTP
+    const isValid = verifyOtp(bodyData.email, bodyData.otp, bodyData.otpToken);
+    if (!isValid) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Invalid or expired OTP!');
+    }
 
-  // Activate user
-  const updatedUser = await prisma.user.update({
-    where: { email: bodyData.email },
-    data: {
-      status: UserStatus.ACTIVE,
-      isVerified: true,
-      isProfileComplete: true,
-    },
-  });
-
-  // Ensure Stripe customer
-  if (!updatedUser.stripeCustomerId) {
-    const customer = await stripe.customers.create({
-      name: userData.fullName!,
-      email: userData.email,
-      address: {
-        city: userData.address ?? 'City',
-        country: 'PL', // Poland for your project
-      },
-      metadata: {
-        userId: userData.id,
-        role: userData.role,
+    // Activate user
+    const updatedUser = await tx.user.update({
+      where: { email: bodyData.email },
+      data: {
+        status: UserStatus.ACTIVE,
+        isVerified: true,
+        isProfileComplete: true,
       },
     });
 
-    await prisma.user.update({
-      where: { id: userData.id },
-      data: { stripeCustomerId: customer.id },
-    });
-  }
+    // Ensure Stripe customer
+    if (!updatedUser.stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        name: userData.fullName!,
+        email: userData.email,
+        address: {
+          city: userData.address ?? 'City',
+          country: 'PL', // Poland for your project
+        },
+        metadata: {
+          userId: userData.id,
+          role: userData.role,
+        },
+      });
+
+      await tx.user.update({
+        where: { id: userData.id },
+        data: { stripeCustomerId: customer.id },
+      });
+    }
+  });
 
   return;
 };

@@ -39,7 +39,7 @@ const createCategoryIntoDb = async (userId: string, data: any) => {
 
 
 
-const getCategoryListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+const getCategoryListFromDb = async ( options: ISearchAndFilterOptions) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
   // Build the complete where clause manually
@@ -117,7 +117,7 @@ const getCategoryListFromDb = async (userId: string, options: ISearchAndFilterOp
   return formatPaginationResponse(transformedCategories, total, page, limit);
 };
 
-const getCategoryByIdFromDb = async (userId: string, categoryId: string) => {
+const getCategoryByIdFromDb = async (categoryId: string) => {
   
     const result = await prisma.category.findUnique({ 
     where: {

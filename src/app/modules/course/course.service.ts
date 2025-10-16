@@ -284,10 +284,8 @@ const getCourseListFromDb = async (
   const searchFields = [
     'courseTitle',
     'courseShortDescription',
-    'courseDescription',
     'instructorName',
     'instructorDesignation',
-    'category.name',
   ];
   const searchQuery = buildSearchQuery({
     searchTerm: options.searchTerm,
@@ -295,18 +293,33 @@ const getCourseListFromDb = async (
   });
 
   // Build filter query
+  // Support comma-separated values for fields like categoryName, instructorName, instructorDesignation
   const filterFields: Record<string, any> = {
-    ...(options.courseLevel && { courseLevel: options.courseLevel }),
-    ...(options.categoryName && { category: { name: options.categoryName } }),
+    ...(options.courseLevel && { courseLevel: {
+      in: options.courseLevel.split(',').map((v: string) => v.trim()),
+    } }),
+    ...(options.categoryName && {
+      category: {
+        name: {
+          in: options.categoryName.split(',').map((v: string) => v.trim()),
+        },
+      },
+    }),
     ...(options.certificate !== undefined && {
       certificate: options.certificate,
     }),
     ...(options.lifetimeAccess !== undefined && {
       lifetimeAccess: options.lifetimeAccess,
     }),
-    ...(options.instructorName && { instructorName: options.instructorName }),
+    ...(options.instructorName && {
+      instructorName: {
+        in: options.instructorName.split(',').map((v: string) => v.trim()),
+      },
+    }),
     ...(options.instructorDesignation && {
-      instructorDesignation: options.instructorDesignation,
+      instructorDesignation: {
+        in: options.instructorDesignation.split(',').map((v: string) => v.trim()),
+      },
     }),
     ...(options.rating !== undefined && { avgRating: Number(options.rating) }),
     ...(options.priceMin !== undefined && {
@@ -379,7 +392,6 @@ const getCourseListFromDb = async (
     },
   });
 
-  console.log("courses");
 
   // Flatten category.name into the course object
   const result = courses.map(course => {

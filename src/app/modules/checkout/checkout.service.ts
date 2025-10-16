@@ -10,82 +10,95 @@ const createCheckoutIntoDbForStudent = async (
   userId: string,
   data: { all?: boolean; courseIds?: string[] },
 ) => {
-  // 1. Get the user's cart and items
-  const cart = await prisma.cart.findUnique({
-    where: { userId },
-    include: { items: { include: { course: true } } },
-  });
+  return await prisma.$transaction(async tx => {
 
-  if (!cart || cart.items.length === 0) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Cart is empty');
-  }
+     // delete existing checkout and items if any
+    await tx.checkoutItem.deleteMany({
+      where: { checkout: { userId } },
+    });
+    await tx.checkout.deleteMany({
+      where: { userId },
+    });
+    // 1. Get the user's cart and items
+    const cart = await tx.cart.findUnique({
+      where: { userId },
+      include: { items: { include: { course: true } } },
+    });
 
-  // 2. Decide which items to checkout
-  let selectedItems;
-  if (data.all) {
-    selectedItems = cart.items;
-  } else if (data.courseIds && data.courseIds.length > 0) {
-    selectedItems = cart.items.filter(item =>
-      data.courseIds?.includes(item.courseId),
+    if (!cart || cart.items.length === 0) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Cart is empty');
+    }
+
+    // 2. Decide which items to checkout
+    let selectedItems;
+    if (data.all) {
+      selectedItems = cart.items;
+    } else if (data.courseIds && data.courseIds.length > 0) {
+      selectedItems = cart.items.filter(item =>
+        data.courseIds?.includes(item.courseId),
+      );
+    } else {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Provide either all=true or specific courseIds',
+      );
+    }
+
+    if (selectedItems.length === 0) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'No valid cart items selected',
+      );
+    }
+
+    // 3. Calculate total
+    const totalAmount = selectedItems.reduce(
+      (sum, item) => sum + (item.course.price || 0),
+      0,
     );
-  } else {
-    throw new AppError(
-      httpStatus.BAD_REQUEST,
-      'Provide either all=true or specific courseIds',
-    );
-  }
 
-  if (selectedItems.length === 0) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'No valid cart items selected');
-  }
+    // 4. Create checkout record
+    const checkout = await tx.checkout.create({
+      data: {
+        userId,
+        totalAmount,
+        status: CheckoutStatus.PENDING,
+      },
+    });
 
-  // 3. Calculate total
-  const totalAmount = selectedItems.reduce(
-    (sum, item) => sum + (item.course.price || 0),
-    0,
-  );
+    // 5. Create checkout items
+    await tx.checkoutItem.createMany({
+      data: selectedItems.map(item => ({
+        checkoutId: checkout.id,
+        courseId: item.courseId,
+      })),
+    });
 
-  // 4. Create checkout record
-  const checkout = await prisma.checkout.create({
-    data: {
-      userId,
-      totalAmount,
-      status: CheckoutStatus.PENDING,
-    },
-  });
+    // 6. Remove purchased items from cart
+    await tx.cartItem.deleteMany({
+      where: {
+        id: { in: selectedItems.map(item => item.id) },
+      },
+    });
 
-  // 5. Create checkout items
-  await prisma.checkoutItem.createMany({
-    data: selectedItems.map(item => ({
-      checkoutId: checkout.id,
-      courseId: item.courseId,
-    })),
-  });
-
-  // 6. Remove purchased items from cart
-  await prisma.cartItem.deleteMany({
-    where: {
-      id: { in: selectedItems.map(item => item.id) },
-    },
-  });
-
-  return await prisma.checkout.findUnique({
-    where: { id: checkout.id },
-    include: {
-      items: {
-        include: {
-          course: {
-            select: {
-              id: true,
-              courseTitle: true,
-              courseShortDescription: true,
-              price: true,
-              discountPrice: true,
+    return await tx.checkout.findUnique({
+      where: { id: checkout.id },
+      include: {
+        items: {
+          include: {
+            course: {
+              select: {
+                id: true,
+                courseTitle: true,
+                courseShortDescription: true,
+                price: true,
+                discountPrice: true,
+              },
             },
           },
         },
       },
-    },
+    });
   });
 };
 
