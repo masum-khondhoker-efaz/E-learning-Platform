@@ -174,20 +174,21 @@ const updateFavoriteCourseIntoDb = async (
 
 const deleteFavoriteCourseItemFromDb = async (
   userId: string,
-  favoriteCourseId: string,
+  courseId: string,
 ) => {
-  const existingItem = await prisma.favoriteCourse.findUnique({
+  const existingItem = await prisma.favoriteCourse.findFirst({
     where: {
-      id: favoriteCourseId,
+      userId: userId,
+      courseId: courseId,
     },
   });
   if (!existingItem) {
     throw new AppError(httpStatus.NOT_FOUND, 'favoriteCourse not found');
   }
-  const deletedItem = await prisma.favoriteCourse.delete({
+  const deletedItem = await prisma.favoriteCourse.deleteMany({
     where: {
-      id: favoriteCourseId,
       userId: userId,
+      courseId: courseId,
     },
   });
   if (!deletedItem) {
