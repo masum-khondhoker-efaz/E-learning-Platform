@@ -279,7 +279,6 @@ model EnrolledCourse {
   @@unique([userId, courseId])
   @@map("enrolled_courses")
 }
-
 model StudentProgress {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   userId      String   @db.ObjectId

@@ -11,8 +11,7 @@ const createCheckoutIntoDbForStudent = async (
   data: { all?: boolean; courseIds?: string[] },
 ) => {
   return await prisma.$transaction(async tx => {
-
-     // delete existing checkout and items if any
+    // delete existing checkout and items if any
     await tx.checkoutItem.deleteMany({
       where: { checkout: { userId } },
     });
@@ -52,10 +51,15 @@ const createCheckoutIntoDbForStudent = async (
     }
 
     // 3. Calculate total
-    const totalAmount = selectedItems.reduce(
-      (sum, item) => sum + (item.course.price || 0),
-      0,
-    );
+    const totalAmount = selectedItems.reduce((sum, item) => {
+      const price = item.course?.price ?? 0;
+      const discount = item.course?.discountPrice ?? null;
+      const effectivePrice =
+      typeof discount === 'number' && discount > 0 && discount < price
+        ? discount
+        : price;
+      return sum + effectivePrice;
+    }, 0);
 
     // 4. Create checkout record
     const checkout = await tx.checkout.create({
@@ -523,11 +527,42 @@ const markCheckoutPaid = async (
 };
 
 const getCheckoutListFromDb = async (userId: string) => {
-  const result = await prisma.checkout.findMany();
+  const result = await prisma.checkout.findMany({
+    where: { userId },
+    include: {
+      items: {
+        include: {
+          course: {
+            select: {
+              id: true,
+              courseTitle: true,
+              courseShortDescription: true,
+              courseThumbnail: true,
+              price: true,
+              discountPrice: true,
+            },  
+          },
+        },
+      },
+    },
+  });
   if (result.length === 0) {
-    return { message: 'No checkout found' };
+    return [];
   }
-  return result;
+
+  // flatten items for each checkout
+  return result.map(checkout => ({
+    ...checkout,
+    items: checkout.items.map(item => ({
+      id: item.id,
+      courseId: item.courseId,
+      courseTitle: item.course.courseTitle,
+      courseShortDescription: item.course.courseShortDescription,
+      courseThumbnail: item.course.courseThumbnail,
+      price: item.course.price,
+      discountPrice: item.course.discountPrice,
+    })),
+  }));
 };
 
 const getCheckoutByIdFromDb = async (userId: string, checkoutId: string) => {
@@ -563,17 +598,31 @@ const updateCheckoutIntoDb = async (
 };
 
 const deleteCheckoutItemFromDb = async (userId: string, checkoutId: string) => {
-  const deletedItem = await prisma.checkout.delete({
-    where: {
-      id: checkoutId,
-      userId: userId,
-    },
-  });
-  if (!deletedItem) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'checkoutId, not deleted');
-  }
+  return await prisma.$transaction(async tx => {
+    // fetch checkout by id and validate ownership
+    const checkout = await tx.checkout.findUnique({
+      where: { id: checkoutId },
+    });
+    if (!checkout || checkout.userId !== userId) {
+      throw new AppError(httpStatus.NOT_FOUND, 'Checkout not found');
+    }
 
-  return deletedItem;
+    // delete checkout items for this checkout
+    const deletedItems = await tx.checkoutItem.deleteMany({
+      where: { checkoutId },
+    });
+
+    if (deletedItems.count === 0) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'No checkout items deleted');
+    }
+
+    // delete the checkout record itself
+    const deletedCheckout = await tx.checkout.delete({
+      where: { id: checkoutId },
+    });
+
+    return { deletedCheckout, deletedItemsCount: deletedItems.count };
+  });
 };
 
 export const checkoutService = {

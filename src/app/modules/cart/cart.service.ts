@@ -26,22 +26,10 @@ const getOrCreateCart = async (userId: string) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'userId is required');
   }
 
-  let cart = await prisma.cart.findFirst({
-    where: { userId },
+  let cart = await prisma.cart.findUnique({
+    where: { userId: userId },
     include: {
-      items: {
-        include: {
-          course: {
-            select: {
-              id: true,
-              courseTitle: true,
-              courseShortDescription: true,
-              price: true,
-              discountPrice: true,
-            },
-          },
-        },
-      },
+      items: true,
     },
   });
 
@@ -83,6 +71,15 @@ const createCartIntoDb = async (userId: string, data: { courseId: string }) => {
 
   if (existingItem) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Course already in cart');
+  }
+
+  // check course existence
+  const course = await prisma.course.findUnique({
+    where: { id: data.courseId },
+  });
+
+  if (!course) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
   }
 
   await prisma.cartItem.create({
@@ -175,12 +172,19 @@ const getCartListFromDb = async (userId: string, options: ISearchAndFilterOption
     };
   }
 
+  // Exclude cart items whose related course is null (orphaned records)
+  // Wrap any accumulated CourseWhereInput filters into a relation filter using `is`.
+  const existingCourseFilters = whereQuery.course || {};
+  whereQuery.course = {
+    is: existingCourseFilters,
+  };
+
   // Sorting
   const orderBy = {
     [sortBy]: sortOrder,
   };
 
-  // Get total count
+  // Get total count (excluding orphaned items)
   const total = await prisma.cartItem.count({ where: whereQuery });
 
   if (total === 0) {
@@ -250,7 +254,7 @@ const getCartByIdFromDb = async (userId: string, cartItemId: string) => {
     throw new AppError(httpStatus.NOT_FOUND, 'cart not found');
   }
 
-  const cartItem = await prisma.cartItem.findUnique({
+  const cartItem = await prisma.cartItem.findFirst({
     where: {
       id: cartItemId,
       cartId: result.id,
@@ -268,7 +272,7 @@ const getCartByIdFromDb = async (userId: string, cartItemId: string) => {
     },
   });
   if (!cartItem) {
-    throw new AppError(httpStatus.NOT_FOUND, 'No items in cart');
+    throw new AppError(httpStatus.NOT_FOUND, 'Cart item not found');
   }
 
   return cartItem;

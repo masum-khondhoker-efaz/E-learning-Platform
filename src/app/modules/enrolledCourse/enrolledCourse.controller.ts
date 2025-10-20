@@ -187,6 +187,7 @@ const getMyOrders = catchAsync(async (req, res) => {
 const getMyLearningHistory = catchAsync(async (req, res) => {
   const user = req.user as any;
   const userRole = user.role;
+  
   if (userRole === UserRoleEnum.EMPLOYEE) {
     const findUser = await prisma.user.findUnique({
       where: { id: user.id, isProfileComplete: true },
@@ -198,15 +199,19 @@ const getMyLearningHistory = catchAsync(async (req, res) => {
       );
     }
   }
+  
   const result = await enrolledCourseService.getMyLearningHistoryFromDb(
     user.id,
     userRole,
+    req.query as ISearchAndFilterOptions
   );
+  
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'My learning history retrieved successfully',
-    data: result,
+    data: result.data,
+    meta: result.meta,
   });
 });
 

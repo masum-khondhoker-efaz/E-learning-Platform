@@ -747,58 +747,42 @@ const getCourseById = async (courseId: string) => {
 };
 
 const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
-  // delete associated files first
-  const course = await prisma.course.findFirst({
-    where: {
-      id: courseId,
-      // userId: userId,
-    },
-    include: {
-      Section: {
-        include: {
-          Lesson: true,
-        },
-      },
-    },
-  });
+  return await prisma.$transaction(async tx => {
+    // fetch course + lessons
+    const course = await tx.course.findFirst({
+      where: { id: courseId /*, userId */ },
+      include: { Section: { include: { Lesson: true } } },
+    });
+    if (!course) throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
 
-  if (!course) {
-    throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
-  }
-
-  // Delete lesson content files
-  for (const section of course.Section) {
-    for (const lesson of section.Lesson) {
-      if (lesson.content) {
-        await deleteFileFromSpace(lesson.content);
+    // delete lesson content files
+    for (const section of course.Section) {
+      for (const lesson of section.Lesson) {
+        if (lesson.content) await deleteFileFromSpace(lesson.content);
       }
     }
-  }
 
-  // Delete course thumbnail
-  if (course.courseThumbnail) {
-    await deleteFileFromSpace(course.courseThumbnail);
-  }
+    // delete course thumbnail
+    if (course.courseThumbnail) await deleteFileFromSpace(course.courseThumbnail);
 
-  // Now delete the course record (this will cascade to sections and lessons if set up in Prisma schema)
+    // Remove references from carts / checkout (use your actual model names)
+    // Replace CartItem and CheckoutItem with the names in your Prisma schema.
+    await tx.cartItem.deleteMany({ where: { courseId } });
+    await tx.checkoutItem.deleteMany({ where: { courseId } });
 
-  const deletedItem = await prisma.course.delete({
-    where: {
-      id: courseId,
-    },
-    include: {
-      Section: {
-        include: {
-          Lesson: true,
-        },
-      },
-    },
+    // Also remove favorites/enrollments/reviews if you want
+    await tx.favoriteCourse.deleteMany({ where: { courseId } });
+    await tx.review.deleteMany({ where: { courseId } });
+    // await tx.enrollment.deleteMany({ where: { courseId } }); // optional
+
+    // Finally delete the course (cascades sections/lessons if configured)
+    const deletedItem = await tx.course.delete({
+      where: { id: courseId },
+      include: { Section: { include: { Lesson: true } } },
+    });
+
+    return deletedItem;
   });
-  if (!deletedItem) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'courseId, not deleted');
-  }
-
-  return deletedItem;
 };
 
 export const courseService = {

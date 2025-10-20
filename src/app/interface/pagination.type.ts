@@ -71,4 +71,9 @@ export interface ISearchAndFilterOptions extends IPaginationOptions {
   percentageMin?: number;
   percentageMax?: number;
   userPhone?: string;
+  // Learning history specific filters
+  isCompleted?: boolean;
+  progressMin?: number;
+  progressMax?: number;
+  
 }
