@@ -14,6 +14,11 @@ router.post(
   reviewController.createReview,
 );
 
+router.get(
+  '/top-reviews',
+  reviewController.getTopReviews,
+)
+
 router.get('/courses/:id', auth(), reviewController.getReviewListForACourse);
 
 

@@ -87,7 +87,7 @@ export const uploadFileToSpace = async (
 const multerUploadMultiple = multer({
   storage: multer.memoryStorage(), // Store file in memory (buffer)
   limits: {
-    fileSize: 5 * 1024 * 1024, // Optional: limit file size (5MB in this example)
+    fileSize: 20 * 1024 * 1024, // Optional: limit file size (5MB in this example)
   },
 });
 

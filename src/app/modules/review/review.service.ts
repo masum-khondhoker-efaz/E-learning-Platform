@@ -55,7 +55,7 @@ const createReviewIntoDb = async (userId: string, data: any) => {
     },
   });
 
-  const totalRatings = courseReviews.length;
+  const totalRatings = courseReviews.length + 1;
   const averageRating =
     courseReviews.reduce((sum, review) => sum + review.rating, 0) / totalRatings;
 
@@ -71,6 +71,47 @@ const createReviewIntoDb = async (userId: string, data: any) => {
 
   return result;
 };
+
+const getTopReviewsFromDb = async () => {
+  const result = await prisma.review.findMany({
+    where: {
+      rating: { gte: 4, lte: 5 }
+    },
+    orderBy: {
+      rating: 'desc',
+    },
+    take: 5,
+    select: {
+      id: true,
+      userId: true,
+      courseId: true,
+      rating: true,
+      comment: true,
+      createdAt: true,
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          image: true,
+        },
+      },
+    },
+  });
+
+  // flatten user details
+  const formattedResult = result.map(review => ({
+    id: review.id,
+    userId: review.userId,
+    courseId: review.courseId,
+    rating: review.rating,
+    comment: review.comment,
+    createdAt: review.createdAt,
+    userName: review.user.fullName,
+    userImage: review.user.image,
+  }));
+
+  return formattedResult;
+}
 
 const getReviewListForACourseFromDb = async (
   userId: string,
@@ -187,6 +228,7 @@ const deleteReviewItemFromDb = async (userId: string, reviewId: string) => {
 
 export const reviewService = {
   createReviewIntoDb,
+  getTopReviewsFromDb,
   getReviewListForACourseFromDb,
   getReviewByIdFromDb,
   updateReviewIntoDb,

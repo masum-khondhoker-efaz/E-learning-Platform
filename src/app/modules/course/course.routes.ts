@@ -1,4 +1,4 @@
-import { User, UserRoleEnum } from '@prisma/client';
+import { User, UserRoleEnum, CheckoutStatus } from '@prisma/client';
 import express from 'express';
 import auth from '../../middlewares/auth';
 import validateRequest from '../../middlewares/validateRequest';
@@ -13,8 +13,14 @@ router.post(
   '/',
   multerUploadMultiple.any(),
   parseBody,
-  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  auth(),
+  validateRequest(courseValidation.createCourseSchema),
   courseController.createCourse,
+);
+
+router.get(
+  '/popular-courses',
+  courseController.getPopularCourses,
 );
 
 

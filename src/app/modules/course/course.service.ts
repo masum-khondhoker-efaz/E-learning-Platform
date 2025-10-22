@@ -200,7 +200,30 @@ const createCourseIntoDb = async (userId: string, data: any) => {
   });
 };
 
-
+const getPopularCoursesFromDb = async () => {
+  const result = await prisma.course.findMany({ 
+    orderBy: {
+      avgRating: 'desc',
+    },  
+    take: 10,
+    include: {
+      category: {
+        select: { 
+          name: true,
+        },
+      },
+    },
+  });
+  // Flatten category.name into the course object
+  const formattedResult = result.map(course => {
+    const { category, ...rest } = course;
+    return {
+      categoryName: category?.name ?? null,
+      ...rest,
+    };
+  });
+  return formattedResult;
+};
 
 const getACourseByIdFromDb = async (userId: string, courseId: string) => {
 
@@ -479,7 +502,6 @@ const getCourseByIdFromDb = async (courseId: string) => {
   return formattedResult;
 };
 
-
 const updateCourseIntoDb = async (
   courseId: string,
   userId: string,
@@ -727,8 +749,6 @@ const updateCourseIntoDb = async (
   });
 };
 
-
-
 // Helper function to get course by ID
 const getCourseById = async (courseId: string) => {
   return await prisma.course.findUnique({
@@ -787,6 +807,7 @@ const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
 
 export const courseService = {
   createCourseIntoDb,
+  getPopularCoursesFromDb,
   getACourseByIdFromDb,
   getCourseListFromDb,
   getCourseByIdFromDb,

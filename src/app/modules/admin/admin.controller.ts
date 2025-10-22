@@ -4,6 +4,16 @@ import catchAsync from '../../utils/catchAsync';
 import { adminService } from './admin.service';
 import { pickValidFields } from '../../utils/pickValidFields';
 
+const getDashboardStats = catchAsync(async (req, res) => {
+  const result = await adminService.getDashboardStatsFromDb();
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Dashboard stats retrieved successfully',
+    data: result,
+  });
+});
+
 const getAllUsers = catchAsync(async (req, res) => {
   const filters = pickValidFields(req.query, [
       'page',
@@ -145,6 +155,7 @@ const getAllNewsletterSubscribers = catchAsync(async (req, res) => {
 });
 
 export const adminController = {
+  getDashboardStats,
   getAllUsers,
   getUserById,
   updateUserStatus,

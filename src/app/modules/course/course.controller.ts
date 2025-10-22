@@ -22,7 +22,7 @@ const createCourse = catchAsync(async (req, res) => {
   const allFiles = req.files as Express.Multer.File[];
 
   // Find thumbnail
-  const thumbnailFile = allFiles.find(f => f.fieldname === 'thumbnail');
+  const thumbnailFile = allFiles.find(f => f.fieldname === 'courseThumbnail');
   if (thumbnailFile) {
     const { url } = await uploadFileToSpace(thumbnailFile, 'courses/thumbnails');
     body.courseThumbnail = url;
@@ -70,6 +70,15 @@ const createCourse = catchAsync(async (req, res) => {
   });
 });
 
+const getPopularCourses = catchAsync(async (req, res) => {
+  const result = await courseService.getPopularCoursesFromDb();
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Popular courses retrieved successfully',
+    data: result,
+  });
+});
 
 const getACourseById = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -234,6 +243,7 @@ const deleteCourse = catchAsync(async (req, res) => {
 
 export const courseController = {
   createCourse,
+  getPopularCourses,
   getACourseById,
   getCourseList,
   getCourseById,

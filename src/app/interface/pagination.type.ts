@@ -48,7 +48,7 @@ export interface ISearchAndFilterOptions extends IPaginationOptions {
   discountPriceMax?: number;
   instructorName?: string;
   instructorDesignation?: string;
-  rating?: number;  
+  rating?: number;
   // Support specific filters
   subject?: string;
   message?: string;
@@ -75,5 +75,6 @@ export interface ISearchAndFilterOptions extends IPaginationOptions {
   isCompleted?: boolean;
   progressMin?: number;
   progressMax?: number;
-  
+  companyEmail?: string;
+  companyAddress?: string;
 }

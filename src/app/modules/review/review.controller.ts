@@ -14,6 +14,16 @@ const createReview = catchAsync(async (req, res) => {
   });
 });
 
+const getTopReviews = catchAsync(async (req, res) => {
+  const result = await reviewService.getTopReviewsFromDb();
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Top reviews retrieved successfully',
+    data: result,
+  });
+});
+
 const getReviewListForACourse = catchAsync(async (req, res) => {
   const user = req.user as any;
   const result = await reviewService.getReviewListForACourseFromDb(user.id, req.params.id);
@@ -62,6 +72,7 @@ const deleteReview = catchAsync(async (req, res) => {
 
 export const reviewController = {
   createReview,
+  getTopReviews,
   getReviewListForACourse,
   getReviewById,
   updateReview,
