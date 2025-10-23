@@ -1,4 +1,9 @@
+import { test } from 'node:test';
 import { z } from 'zod';
+
+const testSchema = z.object({
+  testId: z.string().min(1, 'Test field is required'),
+});
 
 const lessonSchema = z.object({
   title: z.string().min(1, 'Lesson title is required'),
@@ -10,7 +15,7 @@ const sectionSchema = z.object({
   title: z.string().min(1, 'Section title is required'),
   order: z.number().int().min(1, 'Section order must be at least 1'),
   lessons: z.array(lessonSchema).min(1, 'At least one lesson is required'),
-  testId: z.string().optional(),
+  tests: z.array(testSchema).optional(),
 });
 
 const lessonUpdateSchema = z.object({
@@ -26,7 +31,7 @@ const sectionUpdateSchema = z.object({
     .array(lessonUpdateSchema)
     .min(1, 'At least one lesson is required')
     .optional(),
-  testId: z.string().optional(),
+  tests: z.array(testSchema).optional(),
 });
 
 const createCourseSchema = z.object({

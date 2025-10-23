@@ -733,7 +733,7 @@ const getUserCertificates = async (userId: string, options: ISearchAndFilterOpti
 
   return formatPaginationResponse(transformedCertificates, total, page, limit);
 };
-const getCertificateById = async (certificateId: string, userId?: string) => {
+const getCertificateByCourseIdFromDb = async (certificateId: string, userId: string) => {
   
 
   const certificate = await prisma.certificate.findFirst({
@@ -757,7 +757,7 @@ const getCertificateById = async (certificateId: string, userId?: string) => {
           instructorName: true,
         },
       },
-      certificateContent: { select: { title: true, placeholders: true, mainContents: true }
+      certificateContent: { select: { title: true, htmlContent: true, placeholders: true, mainContents: true }
     }
     },
   });
@@ -817,6 +817,6 @@ export const certificateService = {
   getAllCertificatesFromDb,
   getUserCertificates,
   getCertificateByIdForAdmin,
-  getCertificateById,
+  getCertificateByCourseIdFromDb,
   verifyCertificate,
 };

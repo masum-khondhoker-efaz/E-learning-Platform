@@ -27,7 +27,7 @@ router.get(
   certificateController.checkCompletion,
 );
 router.get('/my-certificates', auth(), certificateController.getMyCertificates);
-router.get('/my-certificates/:id', auth(), certificateController.getCertificate);
+router.get('/my-certificates/:id', auth(), certificateController.getCertificateByCourseId);
 router.get('/certificates/:id/verify', certificateController.verifyCertificate);
 
 export const certificateRoutes = router;

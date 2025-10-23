@@ -1034,6 +1034,7 @@ const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum, options: IS
         id: true,
         courseId: true,
         paymentStatus: true,
+        totalAmount: true,
         enrolledAt: true,
         invoiceId: true,
         course: {
@@ -1085,6 +1086,7 @@ const getMyLearningHistoryFromDb = async (
   const whereQuery: any = {
     userId: userId, // Always filter by the current user
     paymentStatus: PaymentStatus.COMPLETED, // Only completed payments
+    progress: { gt: 0 }, // Only courses with progress greater than 0
   };
 
   // Add search conditions

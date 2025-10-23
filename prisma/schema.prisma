@@ -266,6 +266,7 @@ model EnrolledCourse {
   courseId      String        @db.ObjectId
   progress      Float         @default(0) // Percentage of course completed
   paymentStatus PaymentStatus @default(PENDING) // e.g., PENDING, COMPLETED
+  totalAmount   Float?
   invoiceId     String?
   isCompleted   Boolean       @default(false)
   enrolledAt    DateTime      @default(now())
@@ -279,6 +280,7 @@ model EnrolledCourse {
   @@unique([userId, courseId])
   @@map("enrolled_courses")
 }
+
 model StudentProgress {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   userId      String   @db.ObjectId
@@ -342,7 +344,6 @@ model Notification {
 model Payment {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
   userId          String        @db.ObjectId
-  checkoutId      String        @unique @db.ObjectId
   paymentIntentId String?
   paymentMethodId String?
   paymentMethod   String?
@@ -355,7 +356,6 @@ model Payment {
   updatedAt       DateTime      @updatedAt
 
   user     User     @relation(fields: [userId], references: [id])
-  checkout Checkout @relation(fields: [checkoutId], references: [id])
 
   @@map("payments")
 }
@@ -684,9 +684,8 @@ model Checkout {
   updatedAt   DateTime       @updatedAt
 
   // Relationships
-  user    User           @relation(fields: [userId], references: [id])
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   items   CheckoutItem[]
-  Payment Payment[]
 
   @@map("checkouts")
 }
@@ -699,8 +698,8 @@ model CheckoutItem {
   updatedAt  DateTime @updatedAt
 
   // Relationships
-  checkout Checkout @relation(fields: [checkoutId], references: [id])
-  course   Course   @relation(fields: [courseId], references: [id])
+  checkout Checkout @relation(fields: [checkoutId], references: [id], onDelete: Cascade)
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@map("checkout_items")
 }

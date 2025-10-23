@@ -100,10 +100,10 @@ const getMyCertificates = catchAsync(async (req, res) => {
   });
 });
 
-const getCertificate = catchAsync(async (req, res) => {
+const getCertificateByCourseId = catchAsync(async (req, res) => {
   const user = req.user as any;
   const certificateId = req.params.id;
-  const result = await certificateService.getCertificateById(
+  const result = await certificateService.getCertificateByCourseIdFromDb(
     certificateId,
     user.id,
   );
@@ -134,6 +134,6 @@ export const certificateController = {
   getCertificates,
   getACertificate,
   getMyCertificates,
-  getCertificate,
+  getCertificateByCourseId,
   verifyCertificate,
 };

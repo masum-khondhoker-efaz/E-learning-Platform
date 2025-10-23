@@ -55,9 +55,9 @@ const createCheckoutIntoDbForStudent = async (
       const price = item.course?.price ?? 0;
       const discount = item.course?.discountPrice ?? null;
       const effectivePrice =
-      typeof discount === 'number' && discount > 0 && discount < price
-        ? discount
-        : price;
+        typeof discount === 'number' && discount > 0 && discount < price
+          ? discount
+          : price;
       return sum + effectivePrice;
     }, 0);
 
@@ -308,9 +308,9 @@ const markCheckoutPaid = async (
   checkoutId: string,
   paymentId: string,
 ) => {
-  // 1) Fetch checkout and its items
+  // 1) Fetch checkout and its items (lookup by id only; validate ownership/status after)
   const checkout = await prisma.checkout.findUnique({
-    where: { id: checkoutId, userId, status: CheckoutStatus.PENDING },
+    where: { id: checkoutId },
     include: {
       items: { include: { course: true } },
       user: true,
@@ -318,8 +318,19 @@ const markCheckoutPaid = async (
   });
 
   if (!checkout) throw new AppError(httpStatus.NOT_FOUND, 'Checkout not found');
+  // validate ownership
+  if (checkout.userId !== userId) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Checkout not found');
+  }
+  // validate status
   if (checkout.status === CheckoutStatus.PAID) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Checkout already paid');
+  }
+  if (checkout.status !== CheckoutStatus.PENDING) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'Checkout is not in a payable state',
+    );
   }
 
   // Sanity check: must have items
@@ -330,12 +341,6 @@ const markCheckoutPaid = async (
   // 2) Individual student checkout
   if (checkout.user?.role === UserRoleEnum.STUDENT) {
     return await prisma.$transaction(async tx => {
-      // update checkout status
-      await tx.checkout.update({
-        where: { id: checkoutId },
-        data: { status: CheckoutStatus.PAID },
-      });
-
       // enroll for each course if not already
       for (const item of checkout.items) {
         const exists = await tx.enrolledCourse.findFirst({
@@ -347,10 +352,15 @@ const markCheckoutPaid = async (
               userId: checkout.userId,
               courseId: item.courseId,
               paymentStatus: PaymentStatus.COMPLETED,
+              totalAmount: checkout.totalAmount ?? 0,
             },
           });
         }
       }
+      // delete the checkout (and its items via cascade) - delete by id only
+      await tx.checkout.delete({
+        where: { id: checkoutId },
+      });
 
       return { success: true, type: 'individual', checkoutId };
     });
@@ -367,12 +377,6 @@ const markCheckoutPaid = async (
     }> = [];
 
     await prisma.$transaction(async tx => {
-      // mark checkout paid
-      await tx.checkout.update({
-        where: { id: checkoutId, userId, status: CheckoutStatus.PENDING },
-        data: { status: CheckoutStatus.PAID },
-      });
-
       // create CompanyPurchase
       const company = await tx.company.findFirst({
         where: { userId: checkout.userId },
@@ -429,6 +433,10 @@ const markCheckoutPaid = async (
           courseId: item.courseId,
         });
       }
+      // delete the checkout (and its items via cascade) - delete by id only
+      await tx.checkout.delete({
+        where: { id: checkoutId },
+      });
     });
 
     // send emails after commit
@@ -509,7 +517,7 @@ const markCheckoutPaid = async (
           data: {
             isSent: true,
             sentAt: new Date(),
-            tempPassword: null, // clear temp password after sending
+            tempPassword: null,
           },
         });
       } catch (err) {
@@ -540,13 +548,14 @@ const getCheckoutListFromDb = async (userId: string) => {
               courseThumbnail: true,
               price: true,
               discountPrice: true,
-            },  
+            },
           },
         },
       },
     },
   });
-  if (result.length === 0) {
+
+  if (!result || result.length === 0) {
     return [];
   }
 

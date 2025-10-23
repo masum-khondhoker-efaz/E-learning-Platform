@@ -192,34 +192,43 @@ const handleWebHook = catchAsync(async (req: any, res: any) => {
         courseTitle = session.metadata?.courseTitle as string; 
 
         // Create or update payment record
-        const payment = await prisma.payment.upsert({
-          where: {
-            checkoutId: checkoutId,
-          },
-          update: {
-            status: PaymentStatus.COMPLETED,
-            paymentIntentId: session.payment_intent as string,
-            paymentAmount: session.amount_total
-              ? session.amount_total / 100
-              : 0,
-            amountProvider: session.customer as string,
-            paymentDate: new Date(),
-          },
-          create: {
-            userId,
-            checkoutId,
-            paymentAmount: session.amount_total
-              ? session.amount_total / 100
-              : 0,
-            paymentIntentId: session.payment_intent as string,
-            invoiceId: session.return_url,
-            amountProvider: session.customer as string,
-            status: PaymentStatus.COMPLETED,
-          },
-        });
-        if (!payment) {
-          throw new AppError(httpStatus.BAD_REQUEST, 'Payment creation failed');
-        }
+                let payment = await prisma.payment.findFirst({
+                  where: { paymentIntentId: session.payment_intent as string },
+                });
+        
+                if (payment) {
+                  // update using the unique id
+                  payment = await prisma.payment.update({
+                    where: { id: payment.id },
+                    data: {
+                      status: PaymentStatus.COMPLETED,
+                      paymentIntentId: session.payment_intent as string,
+                      paymentAmount: session.amount_total
+                        ? session.amount_total / 100
+                        : 0,
+                      amountProvider: session.customer as string,
+                      paymentDate: new Date(),
+                    },
+                  });
+                } else {
+                  payment = await prisma.payment.create({
+                    data: {
+                      userId,
+                      paymentAmount: session.amount_total
+                        ? session.amount_total / 100
+                        : 0,
+                      paymentIntentId: session.payment_intent as string,
+                      invoiceId: session.return_url,
+                      amountProvider: session.customer as string,
+                      status: PaymentStatus.COMPLETED,
+                      paymentDate: new Date(),
+                    },
+                  });
+                }
+        
+                if (!payment) {
+                  throw new AppError(httpStatus.BAD_REQUEST, 'Payment creation failed');
+                }
 
         // Update checkout status
         await checkoutService.markCheckoutPaid(userId, checkoutId, payment.id);
