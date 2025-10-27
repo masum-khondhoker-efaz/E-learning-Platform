@@ -2,6 +2,8 @@ export interface IUserAddInterface {
     fullName: string;
     email: string;
     password: string;
+    address?: string;
+    phoneNumber?: string;
     role?: string;
     status?: string;
     dateOfBirth?: string;
@@ -9,4 +11,5 @@ export interface IUserAddInterface {
     companyEmail?: string;
     companyAddress?: string;
     companyVatId?: string;
+    courseId?: string;
 }

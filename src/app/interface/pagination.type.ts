@@ -77,4 +77,8 @@ export interface ISearchAndFilterOptions extends IPaginationOptions {
   progressMax?: number;
   companyEmail?: string;
   companyAddress?: string;
+
+  title?: string;
+  description?: string;
+
 }

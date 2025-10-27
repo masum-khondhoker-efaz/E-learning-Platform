@@ -2,16 +2,19 @@ import { z } from 'zod';
 
 const addUserWithCompanySchema = z.object({
   body: z.object({
-    fullName: z.string().min(1, 'Full name is required'),
-    email: z.string().email('Invalid email format'),
+    fullName: z.string().min(1, 'Full name is required').optional(),
+    email: z.string().email('Invalid email format').optional(),
     password: z.string().min(8, 'Password must be at least 8 characters'),
-    role: z.string().optional(), // e.g. "admin", "user"
+    // role: z.string().optional(), // e.g. "admin", "user"
     status: z.string().optional(), // e.g. "active", "inactive"
-    dateOfBirth: z.string(), // ISO date string e.g. "1995-10-02"
-    companyName: z.string(),
-    companyEmail: z.string().email('Invalid company email format'),
-    companyAddress: z.string(),
-    companyVatId: z.string(),
+    dateOfBirth: z.string().optional(), // ISO date string e.g. "1995-10-02"
+    address: z.string().optional(),
+    phoneNumber: z.string().optional(),
+    courseId: z.string().optional(),
+    companyName: z.string().optional(),
+    companyEmail: z.string().email('Invalid company email format').optional(),
+    companyAddress: z.string().optional(),
+    companyVatId: z.string().optional(),
   }),
 });
 

@@ -92,8 +92,8 @@ const getAUsersWithCompany = catchAsync(async (req, res) => {
   });
 });
 
-const addUserWithCompany = catchAsync(async (req, res) => {
-  const result = await adminService.addUserWithCompanyIntoDb(req.body);
+const addUserWithCourseAccess = catchAsync(async (req, res) => {
+  const result = await adminService.addUserWithCourseAccessIntoDb(req.body);
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
     success: true,
@@ -160,7 +160,7 @@ export const adminController = {
   getUserById,
   updateUserStatus,
   getAllUsersWithCompany,
-  addUserWithCompany,
+  addUserWithCourseAccess,
   getAUsersWithCompany,
   getAllEnrolledStudents,
   getAllCompaniesWithCourses,

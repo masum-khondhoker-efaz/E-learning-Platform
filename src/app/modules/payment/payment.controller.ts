@@ -2,15 +2,17 @@ import { Request, Response } from 'express';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import httpStatus from 'http-status';
-
 import { StripeServices } from './payment.service';
-import { CheckoutStatus, PaymentStatus } from '@prisma/client';
+import {  PaymentStatus, UserRoleEnum } from '@prisma/client';
 import prisma from '../../utils/prisma';
 import Stripe from 'stripe';
 import config from '../../../config';
 import { checkoutService } from '../checkout/checkout.service';
 import AppError from '../../errors/AppError';
 import emailSender from '../../utils/emailSender';
+import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
 
 // create a new customer with card
 const saveCardWithCustomerInfo = catchAsync(async (req, res) => {
@@ -147,6 +149,7 @@ const getAllCustomers = catchAsync(async (req: any, res: any) => {
     data: result,
   });
 });
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const handleWebHook = catchAsync(async (req: any, res: any) => {
   const sig = req.headers['stripe-signature'] as string;
@@ -218,7 +221,7 @@ const handleWebHook = catchAsync(async (req: any, res: any) => {
                         ? session.amount_total / 100
                         : 0,
                       paymentIntentId: session.payment_intent as string,
-                      invoiceId: session.return_url,
+                      // invoice: session.return_url,
                       amountProvider: session.customer as string,
                       status: PaymentStatus.COMPLETED,
                       paymentDate: new Date(),
@@ -233,6 +236,10 @@ const handleWebHook = catchAsync(async (req: any, res: any) => {
         // Update checkout status
         await checkoutService.markCheckoutPaid(userId, checkoutId, payment.id);
 
+        // await handleCheckoutCompleted(event);
+
+
+
         console.log('✅ Payment completed and database updated');
         break;
       }
@@ -246,7 +253,7 @@ const handleWebHook = catchAsync(async (req: any, res: any) => {
             data: {
               status: PaymentStatus.COMPLETED,
               paymentDate: new Date(),
-              invoiceId: charge.receipt_url,
+              // invoice: charge.receipt_url,
               paymentMethodId: charge.payment_method as string,
               paymentMethod: charge.payment_method_details?.type,
             },
@@ -347,6 +354,116 @@ const handleWebHook = catchAsync(async (req: any, res: any) => {
     res.status(500).send('Webhook handling failed');
   }
 });
+
+const handleCheckoutCompleted = async (event: Stripe.Event) => {
+  const session = event.data.object as Stripe.Checkout.Session;
+
+  // 🧾 1. Get course + user metadata
+  const courseTitle = session.metadata?.courseTitle ?? 'Course';
+  const userId = session.metadata?.userId;
+  const nip = session.metadata?.nip ?? '---';
+  const customerName = session.customer_details?.name ?? 'Unknown';
+  const customerEmail = session.customer_details?.email ?? 'Unknown';
+
+  // 🧾 2. Create Stripe invoice
+  const invoiceItem = await stripe.invoiceItems.create({
+  customer: session.customer as string,
+  amount: session.amount_total ?? 0,
+  currency: session.currency ?? 'pln',
+  description: `Payment for course: ${courseTitle}`,
+});
+
+const invoice = await stripe.invoices.create({
+  customer: session.customer as string,
+  auto_advance: true,
+  collection_method: 'charge_automatically', // ✅ For already paid sessions
+});
+
+
+  // 💾 3. Generate Polish-style invoice PDF
+  const pdfPath = path.join('/tmp', `invoice_${invoice.number || Date.now()}.pdf`);
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(fs.createWriteStream(pdfPath));
+
+  doc.fontSize(18).text('Faktura VAT', { align: 'center' });
+  doc.moveDown();
+
+  doc.fontSize(12).text(`Numer faktury: ${invoice.number || 'FV/Auto'}`);
+  doc.text(`Data wystawienia: ${new Date().toLocaleDateString('pl-PL')}`);
+  doc.text(`Metoda płatności: Stripe Checkout`);
+  doc.moveDown();
+
+  // Seller info
+  doc.text('Sprzedawca: LeriRides Sp. z o.o.');
+  doc.text('NIP: 5211234567');
+  doc.text('Adres: ul. Przykładowa 1, Warszawa, Polska');
+  doc.moveDown();
+
+  // Buyer info
+  doc.text(`Nabywca: ${customerName}`);
+  doc.text(`Email: ${customerEmail}`);
+  doc.text(`NIP: ${nip}`);
+  doc.moveDown();
+
+  // Line items
+  const gross = (session.amount_total ?? 0) / 100;
+  const vatRate = 0.23;
+  const net = gross / (1 + vatRate);
+  const vat = gross - net;
+
+  doc.text(`Opis: ${courseTitle}`);
+  doc.text(`Kwota netto: ${net.toFixed(2)} PLN`);
+  doc.text(`VAT (23%): ${vat.toFixed(2)} PLN`);
+  doc.text(`Suma brutto: ${gross.toFixed(2)} PLN`);
+  doc.end();
+
+  // 💾 4. Save invoice PDF path in DB
+  // find the user first then check for student or company role
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found for invoice saving');
+  }
+
+  if (user.role === UserRoleEnum.STUDENT || user.role === UserRoleEnum.COMPANY) {
+    await prisma.enrolledCourse.updateMany({
+      where: {
+        userId: user.id,
+        course: { courseTitle: courseTitle },
+        paymentStatus: PaymentStatus.COMPLETED,
+      },
+      data: {
+        invoice: invoice.hosted_invoice_url,
+        // localInvoicePath: pdfPath,
+      },
+    });
+  } else if (user.role === UserRoleEnum.EMPLOYEE) {
+    await prisma.companyPurchase.updateMany({
+      where: {
+        companyId: user.id,
+        items: { some: { course: { courseTitle: courseTitle } } },
+      },
+      data: {
+        invoice: invoice.hosted_invoice_url,
+        // localInvoicePath: pdfPath,
+      },
+    });
+  }
+
+  // 📧 5. Optionally send to customer
+  await emailSender(
+    `Faktura VAT za kurs ${courseTitle}`,
+    customerEmail,
+    `<p>W załączniku znajduje się faktura VAT za zakup kursu ${courseTitle}.</p>`,
+    pdfPath,
+  );
+  
+ 
+
+  console.log('✅ Polish VAT invoice generated and sent');
+};
 
 export const PaymentController = {
   saveCardWithCustomerInfo,

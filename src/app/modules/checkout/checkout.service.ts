@@ -340,6 +340,58 @@ const markCheckoutPaid = async (
 
   // 2) Individual student checkout
   if (checkout.user?.role === UserRoleEnum.STUDENT) {
+    const findStudent = await prisma.user.findUnique({
+      where: { id: checkout.userId },
+    });
+    if (!findStudent) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Student not found for checkout');
+    }
+    const findCourseCreator = await prisma.course.findFirst({
+      where: { id: checkout.items[0].courseId },
+    });
+    if (!findCourseCreator) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Course not found for checkout');
+    }
+    const courseCreator = await prisma.user.findUnique({
+      where: { id: findCourseCreator.userId },
+    });
+    if (!courseCreator) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Course creator not found for checkout',
+      );
+    }
+
+    const invoiceData = {
+      "Seller": courseCreator.fullName,
+      "Email": courseCreator.email,
+      "NIP": courseCreator.vatId,
+      "Contact Number": courseCreator.phoneNumber,
+      "Address": courseCreator.address,
+
+      "Buyer": findStudent.fullName,
+      "Buyer Email": findStudent.email,
+      "Buyer NIP": findStudent.vatId,
+      "Buyer Contact Number": findStudent.phoneNumber,
+      "Buyer Address": findStudent.address,
+      "Invoice Number": paymentId,
+      "Invoice Date": new Date().toLocaleDateString(),
+      "Course(s) Purchased": checkout.items.map(item => item.course.courseTitle).join(", "),
+      "Course ID(s)": checkout.items.map(item => item.courseId).join(", "),
+      "Course Price(s)": checkout.items.map(item => {
+        const price = item.course?.price ?? 0;
+        const discount = item.course?.discountPrice ?? null;
+        const effectivePrice =
+          typeof discount === 'number' && discount > 0 && discount < price
+            ? discount
+            : price;
+        return effectivePrice.toFixed(2);
+      }).join(", "),
+      "Course vat rate(s) included ": checkout.items.map(_ => "23%").join(", "),
+      "Total Amount": checkout.totalAmount?.toFixed(2),
+    };
+
+
     return await prisma.$transaction(async tx => {
       // enroll for each course if not already
       for (const item of checkout.items) {
@@ -352,6 +404,7 @@ const markCheckoutPaid = async (
               userId: checkout.userId,
               courseId: item.courseId,
               paymentStatus: PaymentStatus.COMPLETED,
+              invoice: invoiceData,
               totalAmount: checkout.totalAmount ?? 0,
             },
           });
@@ -368,6 +421,56 @@ const markCheckoutPaid = async (
 
   // 3) Company checkout
   if (checkout.user?.role === UserRoleEnum.COMPANY) {
+     const findStudent = await prisma.user.findUnique({
+      where: { id: checkout.userId },
+    });
+    if (!findStudent) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Student not found for checkout');
+    }
+    const findCourseCreator = await prisma.course.findFirst({
+      where: { id: checkout.items[0].courseId },
+    });
+    if (!findCourseCreator) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Course not found for checkout');
+    }
+    const courseCreator = await prisma.user.findUnique({
+      where: { id: findCourseCreator.userId },
+    });
+    if (!courseCreator) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Course creator not found for checkout',
+      );
+    }
+
+    const invoiceData = {
+      "Seller": courseCreator.fullName,
+      "Email": courseCreator.email,
+      "NIP": courseCreator.vatId,
+      "Contact Number": courseCreator.phoneNumber,
+      "Address": courseCreator.address,
+
+      "Buyer": findStudent.fullName,
+      "Buyer Email": findStudent.email,
+      "Buyer NIP": findStudent.vatId,
+      "Buyer Contact Number": findStudent.phoneNumber,
+      "Buyer Address": findStudent.address,
+      "Invoice Number": paymentId,
+      "Invoice Date": new Date().toLocaleDateString(),
+      "Course(s) Purchased": checkout.items.map(item => item.course.courseTitle).join(", "),
+      "Course ID(s)": checkout.items.map(item => item.courseId).join(", "),
+      "Course Price(s)": checkout.items.map(item => {
+        const price = item.course?.price ?? 0;
+        const discount = item.course?.discountPrice ?? null;
+        const effectivePrice =
+          typeof discount === 'number' && discount > 0 && discount < price
+            ? discount
+            : price;
+        return effectivePrice.toFixed(2);
+      }).join(", "),
+      "Course vat rate(s) included ": checkout.items.map(_ => "23%").join(", "),
+      "Total Amount": checkout.totalAmount?.toFixed(2),
+    };
     const createdCredentialsForEmail: Array<{
       id: string;
       loginEmail: string;
@@ -392,7 +495,7 @@ const markCheckoutPaid = async (
         data: {
           companyId: company.userId,
           totalAmount: checkout.totalAmount ?? 0,
-          invoiceId: paymentId,
+          invoice: invoiceData,
         },
       });
 

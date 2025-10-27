@@ -492,8 +492,8 @@ const getMyEnrolledCoursesFromDb = async (userId: string, options: ISearchAndFil
 
   // Build the complete where clause manually
   const whereQuery: any = {
-    userId: userId, // Always filter by the current user
-    paymentStatus: PaymentStatus.COMPLETED, // Only completed payments
+    userId: userId,
+    paymentStatus: PaymentStatus.COMPLETED,
   };
 
   // Add search conditions
@@ -868,6 +868,27 @@ const getMyEnrolledCourseByIdFromDb = async (
   if (!result) {
     throw new AppError(httpStatus.NOT_FOUND, 'enrolledCourse not found');
   }
+
+  // Show which lessons are completed from the studentProgress table
+  const progressData  = await prisma.studentProgress.findMany({
+    where: {
+      userId: userId,
+      courseId: enrolledCourseId,
+      isCompleted: true,
+    },
+    select: {
+      lessonId: true,
+    },
+  });
+  const completedLessonIds = progressData.map(progress => progress.lessonId);
+
+  // Mark lessons as completed  
+  result.course.Section.forEach(section => {
+    section.Lesson.forEach(lesson => {
+      (lesson as any).isCompleted = completedLessonIds.includes(lesson.id);
+    });
+  });
+  
   return result;
 };
 
@@ -1036,7 +1057,7 @@ const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum, options: IS
         paymentStatus: true,
         totalAmount: true,
         enrolledAt: true,
-        invoiceId: true,
+        invoice: true,
         course: {
           select: {
             id: true,
@@ -1063,7 +1084,7 @@ const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum, options: IS
     enrolledAt: isEmployee
       ? (order.sentAt ?? null)
       : (order.enrolledAt ?? null),
-    invoiceId: isEmployee ? undefined : order.invoiceId,
+    invoice: isEmployee ? undefined : order.invoice,
     courseTitle: order.course?.courseTitle,
     coursePrice: order.course?.price,
     courseLevel: order.course?.courseLevel,

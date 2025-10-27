@@ -23,6 +23,7 @@ model User {
   dateOfBirth                String?
   gender                     String?
   plateForm                  PlatFormType?
+  vatId                      String?
   fcmToken                   String?
   fcmTokenEx                 String?
   stripeCustomerId           String?
@@ -100,7 +101,7 @@ model CompanyPurchase {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   companyId   String   @db.ObjectId
   totalAmount Float?
-  invoiceId   String?
+  invoice     Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -129,8 +130,8 @@ model CompanyPurchaseItem {
 
 model EmployeeCredential {
   id             String        @id @default(auto()) @map("_id") @db.ObjectId
-  companyId      String        @db.ObjectId
-  purchaseItemId String        @unique @db.ObjectId
+  companyId      String?       @db.ObjectId
+  purchaseItemId String?       @unique @db.ObjectId
   courseId       String        @db.ObjectId
   loginEmail     String        @unique
   password       String
@@ -146,10 +147,10 @@ model EmployeeCredential {
   updatedAt      DateTime      @updatedAt
 
   // Relationships
-  user         User?               @relation(fields: [userId], references: [id])
-  course       Course              @relation(fields: [courseId], references: [id])
-  purchaseItem CompanyPurchaseItem @relation(fields: [purchaseItemId], references: [id])
-  company      Company             @relation(fields: [companyId], references: [id])
+  user         User?                @relation(fields: [userId], references: [id])
+  course       Course               @relation(fields: [courseId], references: [id])
+  purchaseItem CompanyPurchaseItem? @relation(fields: [purchaseItemId], references: [id])
+  company      Company?             @relation(fields: [companyId], references: [id])
   Certificate  Certificate[]
 
   @@map("employee_credentials")
@@ -181,6 +182,7 @@ model Course {
   lifetimeAccess         Boolean    @default(false)
   price                  Float
   discountPrice          Float      @default(0)
+  vatPercentage          Float      @default(0)
   instructorName         String
   instructorImage        String
   instructorDesignation  String
@@ -267,7 +269,7 @@ model EnrolledCourse {
   progress      Float         @default(0) // Percentage of course completed
   paymentStatus PaymentStatus @default(PENDING) // e.g., PENDING, COMPLETED
   totalAmount   Float?
-  invoiceId     String?
+  invoice       Json?
   isCompleted   Boolean       @default(false)
   enrolledAt    DateTime      @default(now())
   createdAt     DateTime      @default(now())
@@ -275,7 +277,7 @@ model EnrolledCourse {
 
   // Relationships
   user   User   @relation(fields: [userId], references: [id])
-  course Course @relation(fields: [courseId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@unique([userId, courseId])
   @@map("enrolled_courses")
@@ -302,7 +304,7 @@ model StudentProgress {
   test    Test?   @relation(fields: [testId], references: [id], onDelete: Cascade)
   // @@index([lastViewed])
 
-  @@unique([userId, lessonId])
+  @@unique([userId, courseId, lessonId, testId])
   @@index([userId])
   @@index([courseId])
   @@index([lessonId])
@@ -350,12 +352,12 @@ model Payment {
   paymentAmount   Float
   paymentDate     DateTime      @default(now())
   amountProvider  String
-  invoiceId       String?
+  invoice         Json?
   status          PaymentStatus @default(PENDING)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  user     User     @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@map("payments")
 }
@@ -385,7 +387,7 @@ model Review {
 
   // Relationships
   user   User   @relation(fields: [userId], references: [id])
-  course Course @relation(fields: [courseId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@map("reviews")
 }
@@ -582,6 +584,7 @@ model Certificate {
   companyId            String?  @db.ObjectId
   courseId             String   @db.ObjectId
   certificateId        String   @unique
+  mainContents         Json?
   issueDate            DateTime @default(now())
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -602,7 +605,6 @@ model CertificateContent {
   title        String // e.g. "Standard Completion Certificate"
   htmlContent  String // full certificate HTML with placeholders
   placeholders String[] // e.g. ["{{fullName}}", "{{dob}}", "{{startDate}}", "{{endDate}}", "{{certificateNumber}}"]
-  mainContents Json? // e.g. { "fullName": "John Doe", "dob": "1990-01-01", "startDate": "2023-01-01", "endDate": "2023-03-01", "certificateNumber": "CERT123456" }
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -669,7 +671,7 @@ model CartItem {
 
   // Relationships
   cart   Cart   @relation(fields: [cartId], references: [id])
-  course Course @relation(fields: [courseId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@unique([cartId, courseId]) // no duplicate courses in same cart
   @@map("cart_items")
@@ -684,8 +686,8 @@ model Checkout {
   updatedAt   DateTime       @updatedAt
 
   // Relationships
-  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items   CheckoutItem[]
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CheckoutItem[]
 
   @@map("checkouts")
 }
@@ -721,7 +723,7 @@ model FavoriteCourse {
   updatedAt DateTime @updatedAt
 
   user   User   @relation(fields: [userId], references: [id])
-  course Course @relation(fields: [courseId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@unique([userId, courseId])
   @@map("favorite_courses")
@@ -740,7 +742,7 @@ model InPersonTraining {
 
   // Relationships
   user   User   @relation(fields: [userId], references: [id])
-  course Course @relation(fields: [courseId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@map("in_person_trainings")
 }

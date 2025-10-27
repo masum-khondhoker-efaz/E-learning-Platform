@@ -44,11 +44,12 @@ router.get(
 );
 
 router.post(
-  '/users-with-company',
+  '/users-with-course-access',
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   validateRequest(adminValidation.addUserWithCompanySchema),
-  adminController.addUserWithCompany,
+  adminController.addUserWithCourseAccess,
 );
+
 
 router.get(
   '/enrolled-students',

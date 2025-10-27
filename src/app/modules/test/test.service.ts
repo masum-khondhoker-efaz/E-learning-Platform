@@ -199,14 +199,14 @@ const getTestListFromDb = async (userId: string, options: ISearchAndFilterOption
           },
         },
       },
-      {
-        section: {
-          title: {
-            contains: options.searchTerm,
-            mode: 'insensitive' as const,
-          },
-        },
-      },
+      // {
+        // section: {
+        //   title: {
+        //     contains: options.searchTerm,
+        //     mode: 'insensitive' as const,
+        //   },
+        // },
+      // },
     ];
   }
 

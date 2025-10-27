@@ -1,38 +1,67 @@
 import z from 'zod';
 const registerUser = z.object({
   body: z.object({
-    fullName: z.string({
-      required_error: 'Name is required!',
-    }),
+    fullName: z
+      .string({
+        required_error: 'Name is required!',
+      })
+      .optional(),
     email: z
       .string({
         required_error: 'Email is required!',
       })
       .email({
         message: 'Invalid email format!',
-      }),
-    dateOfBirth: z.string({
-      required_error: 'Date of birth is required!',
-    }),
-    password: z.string({
-      required_error: 'Password is required!',
-    }),
-    companyName: z.string({
-      required_error: 'Company name is required!',
-    }).optional(),
+      })
+      .optional(),
+    dateOfBirth: z
+      .string({
+        required_error: 'Date of birth is required!',
+      })
+      .optional(),
+    password: z
+      .string({
+        required_error: 'Password is required!',
+      })
+      .optional(),
+    address: z
+      .string({
+        required_error: 'Address is required!',
+      })
+      .optional(),
+    phoneNumber: z
+      .string({
+        required_error: 'Phone number is required!',
+      })
+      .optional(),
+    vatId: z
+      .string({
+        required_error: 'VAT ID is required!',
+      })
+      .optional(),
+    companyName: z
+      .string({
+        required_error: 'Company name is required!',
+      })
+      .optional(),
     companyEmail: z
       .string({
         required_error: 'Company email is required!',
       })
       .email({
         message: 'Invalid email format!',
-      }).optional(),
-      companyAddress: z.string({
+      })
+      .optional(),
+    companyAddress: z
+      .string({
         required_error: 'Company address is required!',
-      }).optional(),
-      companyVatId: z.string({
+      })
+      .optional(),
+    companyVatId: z
+      .string({
         required_error: 'Company VAT ID is required!',
-      }).optional(),
+      })
+      .optional(),
   }),
 });
 
@@ -62,6 +91,26 @@ const updateProfileSchema = z.object({
     address: z
       .string({
         required_error: 'Address is required!',
+      })
+      .optional(),
+    vatId: z
+      .string({
+        required_error: 'VAT ID is required!',
+      })
+      .optional(),
+    companyName: z
+      .string({
+        required_error: 'Company name is required!',
+      })
+      .optional(),
+    companyAddress: z
+      .string({
+        required_error: 'Company address is required!',
+      })
+      .optional(),
+    companyVatId: z
+      .string({
+        required_error: 'Company VAT ID is required!',
       })
       .optional(),
   }),

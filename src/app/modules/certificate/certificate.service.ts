@@ -4,11 +4,10 @@ import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { studentProgressService } from '../studentProgress/studentProgress.service';
 import { ISearchAndFilterOptions } from '../../interface/pagination.type';
-import { 
-  calculatePagination, 
-  formatPaginationResponse 
+import {
+  calculatePagination,
+  formatPaginationResponse,
 } from '../../utils/pagination';
-
 
 const issueCertificate = async (
   userId: string,
@@ -26,7 +25,10 @@ const issueCertificate = async (
         include: { user: true },
       });
       if (!employee)
-        throw new AppError(httpStatus.FORBIDDEN, 'You are not assigned to this course');
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'You are not assigned to this course',
+        );
       enrollmentDate = employee.createdAt;
       user = employee.user;
     } else {
@@ -35,7 +37,10 @@ const issueCertificate = async (
         include: { user: true },
       });
       if (!enrollment)
-        throw new AppError(httpStatus.FORBIDDEN, 'You are not enrolled in this course');
+        throw new AppError(
+          httpStatus.FORBIDDEN,
+          'You are not enrolled in this course',
+        );
       enrollmentDate = enrollment.createdAt;
       user = enrollment.user;
     }
@@ -44,7 +49,11 @@ const issueCertificate = async (
       throw new AppError(httpStatus.NOT_FOUND, 'Enrollment record not found');
 
     // 2️⃣ Check if course is fully completed
-    const completion = await studentProgressService.getCourseCompletionStatus(userId, courseId, role);
+    const completion = await studentProgressService.getCourseCompletionStatus(
+      userId,
+      courseId,
+      role,
+    );
     if (!completion.isCompleted)
       throw new AppError(httpStatus.BAD_REQUEST, 'Course not completed yet');
 
@@ -67,14 +76,20 @@ const issueCertificate = async (
       where: { courseId, userId },
     });
     if (existing)
-      throw new AppError(httpStatus.CONFLICT, 'Certificate already issued for this course');
+      throw new AppError(
+        httpStatus.CONFLICT,
+        'Certificate already issued for this course',
+      );
 
     // 5️⃣ Find certificate template (CertificateContent)
     const template = await tx.certificateContent.findUnique({
       where: { courseId },
     });
     if (!template)
-      throw new AppError(httpStatus.NOT_FOUND, 'Certificate template not found for this course');
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Certificate template not found for this course',
+      );
 
     // 6️⃣ Generate a unique certificate ID
     const certificateId = generateCertificateId();
@@ -103,7 +118,6 @@ const issueCertificate = async (
       certificateNumber: certificateId,
     };
 
-
     // 9️⃣ Create the certificate record
     const certificate = await tx.certificate.create({
       data: {
@@ -122,7 +136,7 @@ const issueCertificate = async (
       },
     });
 
-    const contentUpdate = await tx.certificateContent.update({
+    const contentUpdate = await tx.certificate.update({
       where: { id: template.id },
       data: { mainContents: mainContents },
     });
@@ -350,8 +364,10 @@ const getCertificateStatus = async (
   };
 };
 
-
-const getAllCertificatesFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+const getAllCertificatesFromDb = async (
+  userId: string,
+  options: ISearchAndFilterOptions,
+) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
   const user = await prisma.user.findUnique({
@@ -366,7 +382,10 @@ const getAllCertificatesFromDb = async (userId: string, options: ISearchAndFilte
   const whereQuery: any = {};
 
   // For non-admin users, only show their own certificates
-  if (user.role !== UserRoleEnum.ADMIN && user.role !== UserRoleEnum.SUPER_ADMIN) {
+  if (
+    user.role !== UserRoleEnum.ADMIN &&
+    user.role !== UserRoleEnum.SUPER_ADMIN
+  ) {
     whereQuery.userId = userId;
   }
 
@@ -450,7 +469,10 @@ const getAllCertificatesFromDb = async (userId: string, options: ISearchAndFilte
   }
 
   // Filter by specific user (for admin viewing specific user's certificates)
-  if (options.userId && (user.role === UserRoleEnum.ADMIN || user.role === UserRoleEnum.SUPER_ADMIN)) {
+  if (
+    options.userId &&
+    (user.role === UserRoleEnum.ADMIN || user.role === UserRoleEnum.SUPER_ADMIN)
+  ) {
     whereQuery.userId = options.userId;
   }
 
@@ -500,7 +522,6 @@ const getAllCertificatesFromDb = async (userId: string, options: ISearchAndFilte
         select: {
           title: true,
           placeholders: true,
-          mainContents: true,
         },
       },
     },
@@ -512,13 +533,13 @@ const getAllCertificatesFromDb = async (userId: string, options: ISearchAndFilte
     certificateId: cert.certificateId,
     issueDate: cert.issueDate,
     createdAt: cert.createdAt,
-    
+
     // User details
     userId: cert.user?.id,
     userFullName: cert.user?.fullName,
     userEmail: cert.user?.email,
     userImage: cert.user?.image,
-    
+
     // Course details
     courseId: cert.courseId,
     courseTitle: cert.course?.courseTitle,
@@ -527,11 +548,11 @@ const getAllCertificatesFromDb = async (userId: string, options: ISearchAndFilte
     instructorName: cert.course?.instructorName,
     courseThumbnail: cert.course?.courseThumbnail,
     categoryName: cert.course?.category?.name,
-    
+
     // Certificate content
     certificateTitle: cert.certificateContent?.title,
     placeholders: cert.certificateContent?.placeholders,
-    mainContents: cert.certificateContent?.mainContents,
+    mainContents: cert.mainContents,
   }));
 
   return formatPaginationResponse(transformedCertificates, total, page, limit);
@@ -576,6 +597,7 @@ const getCertificateByIdForAdmin = async (
           instructorName: true,
         },
       },
+      certificateContent: { select: { title: true, htmlContent: true } },
     },
   });
 
@@ -583,10 +605,37 @@ const getCertificateByIdForAdmin = async (
     throw new AppError(httpStatus.NOT_FOUND, 'Certificate not found');
   }
 
-  return certificate;
+  // flatten the response to include user and course details at the top level
+
+
+
+  return {
+    id: certificate.id,
+    certificateId: certificate.certificateId,
+    issueDate: certificate.issueDate,
+    createdAt: certificate.createdAt,
+    
+    // User details
+    userFullName: certificate.user?.fullName,
+    userEmail: certificate.user?.email,
+    userImage: certificate.user?.image,
+    // Course details
+    courseTitle: certificate.course?.courseTitle,
+    courseShortDescription: certificate.course?.courseShortDescription,
+    courseThumbnail: certificate.course?.courseThumbnail,
+    instructorName: certificate.course?.instructorName,
+    // Certificate content
+    certificateTitle: certificate.certificateContent?.title,
+    certificateHtmlContent: certificate.certificateContent?.htmlContent,
+    mainContents: certificate.mainContents,
+
+  };
 };
 
-const getUserCertificates = async (userId: string, options: ISearchAndFilterOptions) => {
+const getUserCertificates = async (
+  userId: string,
+  options: ISearchAndFilterOptions,
+) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
   // Build the complete where clause manually
@@ -703,7 +752,7 @@ const getUserCertificates = async (userId: string, options: ISearchAndFilterOpti
         select: {
           title: true,
           placeholders: true,
-          mainContents: true,
+          // mainContents: true,
         },
       },
     },
@@ -715,7 +764,7 @@ const getUserCertificates = async (userId: string, options: ISearchAndFilterOpti
     certificateId: cert.certificateId,
     issueDate: cert.issueDate,
     createdAt: cert.createdAt,
-    
+
     // Course details
     courseId: cert.courseId,
     courseTitle: cert.course?.courseTitle,
@@ -724,22 +773,23 @@ const getUserCertificates = async (userId: string, options: ISearchAndFilterOpti
     instructorName: cert.course?.instructorName,
     courseThumbnail: cert.course?.courseThumbnail,
     categoryName: cert.course?.category?.name,
-    
+
     // Certificate content
     certificateTitle: cert.certificateContent?.title,
     placeholders: cert.certificateContent?.placeholders,
-    mainContents: cert.certificateContent?.mainContents,
+    // mainContents: cert.certificateContent?.mainContents,
   }));
 
   return formatPaginationResponse(transformedCertificates, total, page, limit);
 };
-const getCertificateByCourseIdFromDb = async (certificateId: string, userId: string) => {
-  
-
+const getCertificateByCourseIdFromDb = async (
+  certificateId: string,
+  userId: string,
+) => {
   const certificate = await prisma.certificate.findFirst({
     where: {
       id: certificateId,
-      userId: userId
+      userId: userId,
     },
     include: {
       user: {
@@ -757,8 +807,9 @@ const getCertificateByCourseIdFromDb = async (certificateId: string, userId: str
           instructorName: true,
         },
       },
-      certificateContent: { select: { title: true, htmlContent: true, placeholders: true, mainContents: true }
-    }
+      certificateContent: {
+        select: { title: true, htmlContent: true, placeholders: true },
+      },
     },
   });
 
@@ -766,7 +817,29 @@ const getCertificateByCourseIdFromDb = async (certificateId: string, userId: str
     throw new AppError(httpStatus.NOT_FOUND, 'Certificate not found');
   }
 
-  return certificate;
+  // flatten the response to include user and course details at the top level
+
+  return {
+    id: certificate.id,
+    certificateId: certificate.certificateId,
+    issueDate: certificate.issueDate,
+    createdAt: certificate.createdAt,
+
+    // User details
+    userFullName: certificate.user?.fullName,
+    userEmail: certificate.user?.email,
+    userImage: certificate.user?.image,
+    // Course details
+    courseTitle: certificate.course?.courseTitle,
+    courseShortDescription: certificate.course?.courseShortDescription,
+    courseThumbnail: certificate.course?.courseThumbnail,
+    instructorName: certificate.course?.instructorName,
+    // Certificate content
+    certificateTitle: certificate.certificateContent?.title,
+    certificateHtmlContent: certificate.certificateContent?.htmlContent,
+    placeholders: certificate.certificateContent?.placeholders,
+    mainContents: certificate.mainContents,
+  };
 };
 
 const verifyCertificate = async (certificateId: string) => {

@@ -3,6 +3,7 @@ import { UserRoleEnum, UserStatus, PaymentStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { IUserAddInterface } from './admin.interface';
+import * as bcrypt from 'bcrypt';
 import {
   calculatePagination,
   formatPaginationResponse,
@@ -14,6 +15,7 @@ import {
   combineQueries,
 } from '../../utils/searchFilter';
 import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+
 
 const getDashboardStatsFromDb = async () => {
   // total users count without admin and super admin
@@ -429,6 +431,67 @@ const addUserWithCompanyIntoDb = async (companyData: IUserAddInterface) => {
   return { newUser, newCompany };
 };
 
+const addUserWithCourseAccessIntoDb = async (
+  employeeData: IUserAddInterface,
+) => {
+  const user = await prisma.user.findUnique({
+    where: { email: employeeData.email },
+  });
+  if (user) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User already exists');
+  }
+
+  const hashedPassword = await bcrypt.hash(employeeData.password, 12);
+
+  const newUser = await prisma.user.create({
+    data: {
+      fullName: employeeData.fullName,
+      email: employeeData.email,
+      password: hashedPassword,
+      address: employeeData.address,
+      phoneNumber: employeeData.phoneNumber,
+      dateOfBirth: employeeData.dateOfBirth,
+      role: UserRoleEnum.EMPLOYEE,
+      status: UserStatus.ACTIVE,
+      isVerified: true,
+      isProfileComplete: true,
+    },
+  });
+  if (!newUser) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create user');
+  }
+
+  // Assign course access if courseId is provided
+  if (employeeData.courseId) {
+    const course = await prisma.course.findUnique({
+      where: { id: employeeData.courseId },
+    });
+    if (!course) {
+      throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+    }
+
+    await prisma.employeeCredential.create({
+      data: {
+        userId: newUser.id,
+        courseId: employeeData.courseId,
+        loginEmail: employeeData.email,
+        password: hashedPassword,
+        paymentStatus: PaymentStatus.COMPLETED,
+      },
+    });
+  }
+
+  return {
+    id: newUser.id,
+    fullName: newUser.fullName,
+    email: newUser.email,
+    role: newUser.role,
+    status: newUser.status,
+    courseId: employeeData.courseId || null,
+    createdAt: newUser.createdAt, 
+  };
+}
+
 const getAllEnrolledStudentsFromDb = async () => {
   const result = await prisma.enrolledCourse.findMany({
     include: {
@@ -563,6 +626,7 @@ export const adminService = {
   getUserByIdFromDb,
   updateUserStatusIntoDb,
   getAllUsersWithCompanyFromDb,
+  addUserWithCourseAccessIntoDb,
   getAUsersWithCompanyFromDb,
   addUserWithCompanyIntoDb,
   getAllEnrolledStudentsFromDb,

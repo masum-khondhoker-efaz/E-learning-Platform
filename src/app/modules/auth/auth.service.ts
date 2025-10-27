@@ -97,12 +97,18 @@ const loginUserFromDB = async (payload: { email: string; password: string }) => 
       config.jwt.access_secret as Secret,
       config.jwt.access_expires_in as string,
     );
+    const refreshTokenValue = await refreshToken(
+    { id: user.id, email: user.email, role: user.role },
+    config.jwt.refresh_secret as Secret,
+    config.jwt.refresh_expires_in as string,
+  );
 
     return {
       id: user.id,
       role: user.role,
       message: 'Please complete your profile before proceeding.',
       accessToken,
+      refreshToken: refreshTokenValue,
     };
   }
 

@@ -6,7 +6,6 @@ import {
 } from '@aws-sdk/client-s3';
 import config from '../../config';
 
-// Configure DigitalOcean Spaces
 const s3 = new S3Client({
   region: 'nyc3',
   endpoint: config.s3.do_space_endpoint,
@@ -21,7 +20,6 @@ export const deleteFileFromSpace = async (fileUrl: string) => {
     throw new Error('DO_SPACE_BUCKET is not defined in the environment variables.');
   }
 
-  // Example URL: https://my-bucket.nyc3.digitaloceanspaces.com/folder/12345_image.png
   const url = new URL(fileUrl);
   const key = url.pathname.substring(1); // remove leading "/"
 

@@ -1,287 +1,203 @@
+import { Test } from './../../../../node_modules/.prisma/client/index.d';
 import prisma from '../../utils/prisma';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { PaymentStatus, UserRoleEnum } from '@prisma/client';
-import { Course, Section, StudentProgress } from './studentProgress.interface';
+import { AttemptStatus } from '@prisma/client';
 
+// markLessonCompleted
 const markLessonCompleted = async (
   userId: string,
   lessonId: string,
   role: UserRoleEnum,
 ) => {
-  return await prisma.$transaction(async tx => {
-    // 1. Get lesson details
+  return await prisma.$transaction(async (tx) => {
+    // 1. Load lesson + section + course
     const lesson = await tx.lesson.findUnique({
       where: { id: lessonId },
       include: {
         section: {
-          include: {
-            course: true,
-            Lesson: true, // include all lessons of this section
-          },
+          include: { course: true },
         },
       },
     });
+    if (!lesson) throw new AppError(httpStatus.NOT_FOUND, 'Lesson not found');
 
-    if (!lesson) {
-      throw new AppError(httpStatus.NOT_FOUND, 'Lesson not found');
-    }
+    const courseId = lesson.section.courseId;
 
-    // 2. Check enrollment depending on role
+    // 2. Verify enrollment / assignment
     if (role === UserRoleEnum.EMPLOYEE) {
-      const employeeEnrollment = await tx.employeeCredential.findFirst({
-        where: {
-          userId: userId,
-          paymentStatus: PaymentStatus.COMPLETED,
-          courseId: lesson.section.courseId,
-        },
+      const emp = await tx.employeeCredential.findFirst({
+        where: { userId, courseId, paymentStatus: PaymentStatus.COMPLETED },
       });
-
-      if (!employeeEnrollment) {
-        throw new AppError(
-          httpStatus.FORBIDDEN,
-          'You are not assigned to this course',
-        );
-      }
+      if (!emp) throw new AppError(httpStatus.FORBIDDEN, 'You are not assigned to this course');
     } else {
-      const enrollment = await tx.enrolledCourse.findFirst({
-        where: {
-          userId: userId,
-          paymentStatus: PaymentStatus.COMPLETED,
-          courseId: lesson.section.courseId,
-        },
+      
+      const enrol = await tx.enrolledCourse.findFirst({
+        where: { userId, courseId, paymentStatus: PaymentStatus.COMPLETED },
       });
-
-      if (!enrollment) {
-        throw new AppError(
-          httpStatus.FORBIDDEN,
-          'You are not enrolled in this course',
-        );
-      }
+      if (!enrol) throw new AppError(httpStatus.FORBIDDEN, 'You are not enrolled in this course');
     }
 
-    // 3. Ensure all previous lessons are completed
-    const previousLessons = await tx.lesson.findMany({
-      where: {
-        sectionId: lesson.sectionId,
-        order: { lt: lesson.order },
-      },
+    // 3. Ensure previous lessons in same section are completed
+    const prevLessons = await tx.lesson.findMany({
+      where: { sectionId: lesson.sectionId, order: { lt: lesson.order } },
       select: { id: true },
     });
 
-    if (previousLessons.length > 0) {
-      const previousLessonIds = previousLessons.map(l => l.id);
-
-      const incompleteLesson = await tx.studentProgress.findFirst({
+    if (prevLessons.length > 0) {
+      const prevIds = prevLessons.map(l => l.id);
+      const notCompleted = await tx.studentProgress.findFirst({
         where: {
-          lessonId: { in: previousLessonIds },
+          userId,
+          lessonId: { in: prevIds },
           isCompleted: false,
-          ...(role === UserRoleEnum.EMPLOYEE
-            ? { userId: userId } // still stored as userId in your progress table
-            : { userId: userId }),
         },
       });
-
-      if (incompleteLesson) {
+      if (notCompleted) {
         throw new AppError(
           httpStatus.FORBIDDEN,
-          'Please complete previous lessons before marking this one as completed',
+          'Please complete previous lessons before accessing this one',
         );
       }
     }
 
-    // 4. Upsert progress for this lesson
-    let progress = await tx.studentProgress.findFirst({
-      where: {
-        lessonId,
-        ...(role === UserRoleEnum.EMPLOYEE
-          ? { userId: userId }
-          : { userId: userId }),
-      },
+    // 4. Upsert studentProgress for this lesson
+    let sp = await tx.studentProgress.findFirst({
+      where: { userId, lessonId },
     });
 
-    if (progress) {
-      progress = await tx.studentProgress.update({
-        where: { id: progress.id },
-        data: { isCompleted: true },
-      });
+    if (sp) {
+      if (!sp.isCompleted) {
+        sp = await tx.studentProgress.update({
+          where: { id: sp.id },
+          data: { isCompleted: true },
+        });
+      }
     } else {
-      progress = await tx.studentProgress.create({
+      
+      sp = await tx.studentProgress.create({
         data: {
-          userId: userId,
-          courseId: lesson.section.courseId,
+          userId,
+          courseId,
           sectionId: lesson.sectionId,
           lessonId,
           isCompleted: true,
         },
       });
+
     }
 
-    // 5. Calculate course progress
-    const courseProgress = await calculateProgressInsideTransaction(
-      tx,
-      userId,
-      lesson.section.courseId,
-    );
+    // 5. Recalculate course progress and update enrolledCourse
+    const progress = await updateEnrolledCourseProgress(tx, userId, courseId);
 
-    // 6. Return response with details
-    const progressWithDetails = await tx.studentProgress.findUnique({
-      where: { id: progress.id },
-      include: {
-        lesson: { select: { title: true, order: true } },
-        section: { select: { title: true, order: true } },
-        course: { select: { courseTitle: true } },
-      },
-    });
-
+    // 6. Return helpful payload
     return {
-      ...progressWithDetails,
-      overallProgress: courseProgress.overallProgress,
-      completedLessons: courseProgress.completedLessons,
-      totalLessons: courseProgress.totalLessonsAndTests,
+      progressRecord: sp,
+      overallProgress: progress.overallProgress,
+      breakdown: progress.breakdown,
     };
   });
 };
 
+// markTestCompleted
 const markTestCompleted = async (
-  id: string, // userId or employeeId
+  userId: string,
   testId: string,
   role: UserRoleEnum,
 ) => {
-  return await prisma.$transaction(async tx => {
-    // 1. Get the test with section -> course
+  return await prisma.$transaction(async (tx) => {
+    // 1. Load test + section + course
     const test = await tx.test.findUnique({
       where: { id: testId },
-      include: {
-        section: { include: { course: true } },
-      },
+      include: { section: { include: { course: true } } },
     });
+    if (!test) throw new AppError(httpStatus.NOT_FOUND, 'Test not found');
 
-    if (!test) {
-      // || !test.isPublished
-      throw new AppError(httpStatus.NOT_FOUND, 'Test not found or unpublished');
-    }
+    // if (!test.isPublished) {
+    //   throw new AppError(httpStatus.BAD_REQUEST, 'Test is not published');
+    // }
 
     const courseId = test.section?.courseId;
     const sectionId = test.sectionId;
+    if (!courseId) throw new AppError(httpStatus.BAD_REQUEST, 'Test not linked to a course');
 
-    if (!courseId) {
-      throw new AppError(
-        httpStatus.BAD_REQUEST,
-        'Test not linked to any course',
-      );
-    }
-
-    // 2. Verify enrollment / employee assignment
+    // 2. Verify enrollment / assignment
     if (role === UserRoleEnum.EMPLOYEE) {
-      const employeeEnrollment = await tx.employeeCredential.findFirst({
-        where: { userId: id, courseId },
+      const emp = await tx.employeeCredential.findFirst({
+        where: { userId, courseId, paymentStatus: PaymentStatus.COMPLETED },
       });
-
-      if (!employeeEnrollment) {
-        throw new AppError(
-          httpStatus.FORBIDDEN,
-          'You are not assigned to this course',
-        );
-      }
+      if (!emp) throw new AppError(httpStatus.FORBIDDEN, 'You are not assigned to this course');
     } else {
-      const enrollment = await tx.enrolledCourse.findFirst({
-        where: { userId: id, courseId },
+      const enrol = await tx.enrolledCourse.findFirst({
+        where: { userId, courseId, paymentStatus: PaymentStatus.COMPLETED },
       });
-
-      if (!enrollment) {
-        throw new AppError(
-          httpStatus.FORBIDDEN,
-          'You are not enrolled in this course',
-        );
-      }
+      if (!enrol) throw new AppError(httpStatus.FORBIDDEN, 'You are not enrolled in this course');
     }
 
-    // 3. Ensure all previous tests are attempted
-    const previousTests = await tx.test.findMany({
+    // 3. Ensure previous tests (published) are attempted/completed
+    const prevTests = await tx.test.findMany({
       where: {
         section: { courseId },
-        createdAt: { lt: test.createdAt },
         isPublished: true,
+        createdAt: { lt: test.createdAt },
       },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
 
-    if (previousTests.length > 0) {
-      const previousTestIds = previousTests.map(t => t.id);
-      const attemptedTests = await tx.testAttempt.findMany({
-        where: {
-          userId: id,
-          testId: { in: previousTestIds },
-          status: 'SUBMITTED',
-        },
+    if (prevTests.length > 0) {
+      const prevIds = prevTests.map(t => t.id);
+      const attempts = await tx.testAttempt.findMany({
+        where: { userId, testId: { in: prevIds }, status: AttemptStatus.SUBMITTED },
         select: { testId: true },
       });
-
-      const attemptedIds = attemptedTests.map(t => t.testId);
-      const notAttempted = previousTestIds.filter(
-        tid => !attemptedIds.includes(tid),
-      );
-
+      const attemptedSet = new Set(attempts.map(a => a.testId));
+      const notAttempted = prevIds.filter(id => !attemptedSet.has(id));
       if (notAttempted.length > 0) {
         throw new AppError(
           httpStatus.FORBIDDEN,
-          'Please attempt all previous tests before marking this test as completed',
+          'Please attempt previous tests before taking this test',
         );
       }
     }
 
-    // 4. Upsert progress for this test
-    let progress = await tx.studentProgress.findFirst({
-      where: {
-        testId,
-        userId: id,
-      },
+    // 4. Upsert studentProgress for this test (mark completed)
+    let sp = await tx.studentProgress.findFirst({
+      where: { userId, testId },
     });
-    if (!progress) {
-      throw new AppError(
-        httpStatus.NOT_FOUND,
-        'Progress record not found for this test',
-      );
-    }
 
-    if (progress) {
-      progress = await tx.studentProgress.update({
-        where: { id: progress.id },
-        data: { isCompleted: true },
-      });
+    if (sp) {
+      if (!sp.isCompleted) {
+        sp = await tx.studentProgress.update({
+          where: { id: sp.id },
+          data: { isCompleted: true },
+        });
+      }
     } else {
-      progress = await tx.studentProgress.create({
+      sp = await tx.studentProgress.create({
         data: {
-          userId: id,
+          userId,
           courseId,
           sectionId: sectionId!,
-          // lessonId: '000000000000000000000000', // dummy lessonId (if nullable, remove this)
           testId,
           isCompleted: true,
         },
       });
     }
 
-    // 5. Recalculate overall course progress
-    const courseProgress = await calculateProgressInsideTransaction(
-      tx,
-      id,
-      courseId,
-    );
+    // 5. Recalculate and update enrolledCourse progress
+    const progress = await updateEnrolledCourseProgress(tx, userId, courseId);
 
-    // 6. Return combined response
+    // 6. Return
     return {
-      testId,
-      courseId,
-      overallProgress: courseProgress.overallProgress,
-      completedLessons: courseProgress.completedLessons,
-      totalLessons: courseProgress.totalLessonsAndTests,
-      message: 'Test marked as completed successfully',
+      progressRecord: sp,
+      overallProgress: progress.overallProgress,
+      breakdown: progress.breakdown,
     };
   });
 };
+
 
 const markCourseCompleted = async (
   userId: string,
@@ -347,7 +263,9 @@ const markCourseCompleted = async (
           ? { lessonId: item.id, userId }
           : { testId: item.id, userId };
 
-      const existing = await tx.studentProgress.findFirst({ where: whereClause });
+      const existing = await tx.studentProgress.findFirst({
+        where: whereClause,
+      });
 
       if (existing) {
         await tx.studentProgress.update({
@@ -373,19 +291,22 @@ const markCourseCompleted = async (
     await Promise.all(contentItems.map(item => upsertProgress(item)));
 
     // 6️⃣ Compute updated progress
-    const progress = await calculateProgressInsideTransaction(tx, userId, courseId);
+    const progress = await calculateProgressInsideTransaction(
+      tx,
+      userId,
+      courseId,
+    );
 
     // 7️⃣ Return summary
     return {
       courseId,
       overallProgress: progress.overallProgress,
-      completedItems: progress.completedLessons, // lessons + tests
-      totalItems: progress.totalLessonsAndTests,
+      completedItems: progress.completedItems, // lessons + tests
+      totalItems: progress.totalItems,
       message: 'Course marked as completed successfully',
     };
   });
 };
-
 
 const getALessonMaterialByIdFromDb = async (
   userId: string,
@@ -475,71 +396,241 @@ const getALessonMaterialByIdFromDb = async (
   return lessonMaterial;
 };
 
+// const updateEnrolledCourseProgress = async (tx: any, userId: string, courseId: string) => {
+//   const progress = await calculateProgressInsideTransaction(tx, userId, courseId);
+  
+//   await tx.enrolledCourse.updateMany({
+//     where: {
+//       userId: userId,
+//       courseId: courseId,
+//     },
+//     data: {
+//       progress: progress.overallProgress,
+//       isCompleted: progress.overallProgress >= 100,
+//       updatedAt: new Date(),
+//     },
+//   });
+  
+//   return progress;
+// };
+
 // Helper function to calculate progress inside transaction
+// helper-progress.ts (or inside your studentProgress.service.ts)
+// --- calculate within transaction (used by mark* functions) ---
 const calculateProgressInsideTransaction = async (
   tx: any,
   userId: string,
   courseId: string,
 ) => {
-  const progress = await tx.studentProgress.findMany({
-    where: {
-      userId,
-      courseId,
-    },
+  // get all progress rows for this user+course (completed or not, we'll filter)
+  const progressRows = await tx.studentProgress.findMany({
+    where: { userId, courseId, isCompleted: true },
+    select: { lessonId: true, testId: true },
   });
 
-  // Fetch course with sections, lessons, and tests
+  // sets of completed ids
+  type ProgressRow = { lessonId?: string | null; testId?: string | null };
+
+  const completedLessonIds: Set<string> = new Set<string>(
+    (progressRows as ProgressRow[])
+      .filter(p => !!p.lessonId)
+      .map(p => p.lessonId as string),
+  );
+  const completedTestIds: Set<string> = new Set<string>(
+    (progressRows as ProgressRow[])
+      .filter(p => !!p.testId)
+      .map(p => p.testId as string),
+  );
+
+  // fetch course structure: count lessons, count published tests
   const course = await tx.course.findUnique({
     where: { id: courseId },
     include: {
       Section: {
         include: {
-          Lesson: true,
-          Test: true, // include tests now
+          Lesson: { select: { id: true } },
+          Test: { where: { isPublished: true }, select: { id: true } },
         },
       },
     },
   });
 
   if (!course) {
-    throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+    return {
+      completedItems: 0,
+      totalItems: 0,
+      progressPercentage: 0,
+      overallProgress: 0,
+      breakdown: {
+        completedLessons: 0,
+        completedTests: 0,
+        totalLessons: 0,
+        totalTests: 0,
+      },
+    };
   }
 
-  const totalLessonsAndTests: number = (course as Course).Section.reduce(
-    (sum: number, section: Section) => {
-      const lessonsCount: number = section.Lesson.length;
-      const testsCount: number = section.Test.length;
-      return sum + lessonsCount + testsCount;
-    },
-    0,
-  );
+  // compute totals and completed counts
+  let totalLessons = 0;
+  let totalTests = 0;
+  let completedLessons = 0;
+  let completedTests = 0;
 
-  // Count completed items (lessons/tests) from StudentProgress
+  for (const section of course.Section) {
+    if (section.Lesson) {
+      totalLessons += section.Lesson.length;
+      for (const l of section.Lesson) {
+        if (completedLessonIds.has(l.id)) completedLessons++;
+      }
+    }
+    if (section.Test) {
+      totalTests += section.Test.length;
+      for (const t of section.Test) {
+        if (completedTestIds.has(t.id)) completedTests++;
+      }
+    }
+  }
 
-  const completedItems: number = (progress as StudentProgress[]).filter(
-    (p: StudentProgress) => p.isCompleted,
-  ).length;
-
-  const overallProgress =
-    totalLessonsAndTests > 0
-      ? (completedItems / totalLessonsAndTests) * 100
-      : 0;
+  const totalItems = totalLessons + totalTests;
+  const completedItems = completedLessons + completedTests;
+  const progressPercentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
   return {
-    overallProgress: Math.round(overallProgress),
-    completedLessons: completedItems,
-    totalLessonsAndTests: totalLessonsAndTests,
+    completedItems,
+    totalItems,
+    progressPercentage,
+    overallProgress: progressPercentage,
+    breakdown: {
+      completedLessons,
+      completedTests,
+      totalLessons,
+      totalTests,
+    },
   };
 };
 
+// Non-transaction wrapper (uses prisma directly)
+const calculateCourseProgress = async (userId: string, courseId: string) => {
+  const progress = await prisma.studentProgress.findMany({
+    where: { userId, courseId },
+  });
+
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    include: {
+      Section: {
+        include: {
+          Lesson: true,
+          Test: true, // ✅ include all tests (not filtered by isPublished)
+        },
+      },
+    },
+  });
+
+  if (!course) {
+    return {
+      completedItems: 0,
+      totalItems: 0,
+      progressPercentage: 0,
+      overallProgress: 0,
+      breakdown: {
+        completedLessons: 0,
+        completedTests: 0,
+        totalLessons: 0,
+        totalTests: 0,
+      },
+    };
+  }
+
+  let totalItems = 0;
+  let completedItems = 0;
+  let totalLessons = 0;
+  let totalTests = 0;
+  let completedLessons = 0;
+  let completedTests = 0;
+
+  // ✅ Count lessons and tests equally
+  course.Section.forEach(section => {
+    // Lessons
+    section.Lesson.forEach(lesson => {
+      totalItems++;
+      totalLessons++;
+      const lessonProgress = progress.find(
+        p => p.lessonId === lesson.id && p.isCompleted
+      );
+      if (lessonProgress) {
+        completedItems++;
+        completedLessons++;
+      }
+    });
+
+    // Tests
+    section.Test.forEach(test => {
+      totalItems++;
+      totalTests++;
+      const testProgress = progress.find(
+        p => p.testId === test.id && p.isCompleted
+      );
+      if (testProgress) {
+        completedItems++;
+        completedTests++;
+      }
+    });
+  });
+
+  const progressPercentage =
+    totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
+
+  return {
+    completedItems,
+    totalItems,
+    progressPercentage: Math.round(progressPercentage),
+    overallProgress: Math.round(progressPercentage),
+    breakdown: {
+      completedLessons,
+      completedTests,
+      totalLessons,
+      totalTests,
+    },
+  };
+};
+
+
+// updates the enrolledCourse progress/isCompleted inside a transaction
+const updateEnrolledCourseProgress = async (tx: any, userId: string, courseId: string) => {
+  const progress = await calculateProgressInsideTransaction(tx, userId, courseId);
+
+  // find the enrolledCourse row
+  const enrolled = await tx.enrolledCourse.findFirst({
+    where: { userId, courseId },
+  });
+
+  if (!enrolled) {
+    // no enrolled row — nothing to update (or throw depending on your policy)
+    return progress;
+  }
+
+  // update progress fields
+  await tx.enrolledCourse.update({
+    where: { id: enrolled.id },
+    data: {
+      progress: progress.overallProgress,
+      isCompleted: progress.overallProgress === 100,
+    },
+  });
+
+  return progress;
+};
+
+
 const markLessonIncomplete = async (userId: string, lessonId: string) => {
   return await prisma.$transaction(async tx => {
-    const progress = await tx.studentProgress.findUnique({
+    const progress = await tx.studentProgress.findFirst({
       where: {
-        userId_lessonId: {
+        // userId_lessonId: {
           userId: userId,
           lessonId: lessonId,
-        },
+        // },
       },
     });
 
@@ -608,35 +699,35 @@ const getACourseDetailsFromDb = async (userId: string, courseId: string) => {
   return course;
 };
 
+// studentProgress.service.ts
 const getAllCourseProgress = async (userId: string) => {
-  const enrollments = await prisma.enrolledCourse.findMany({
-    where: { userId: userId },
+  // Get all enrolled courses for this user
+  const enrolledCourses = await prisma.enrolledCourse.findMany({
+    where: {
+      userId: userId,
+      paymentStatus: PaymentStatus.COMPLETED,
+    },
     select: {
       courseId: true,
-      course: {
-        select: {
-          id: true,
-          courseTitle: true,
-        },
-      },
     },
   });
 
-  const progressData = await Promise.all(
-    enrollments.map(async enrollment => {
-      const progress = await getAStudentProgress(userId, enrollment.courseId);
-      // Exclude progressBySection from the response
-      const { progressBySection, lessons, ...restProgress } = progress;
+  const courseIds = enrolledCourses.map(ec => ec.courseId);
+  
+  const progressList = await Promise.all(
+    courseIds.map(async (courseId) => {
+      const progress = await calculateCourseProgress(userId, courseId);
       return {
-        courseId: enrollment.courseId,
-        courseTitle: enrollment.course.courseTitle,
-        progress: restProgress,
+        courseId,
+        ...progress
       };
-    }),
+    })
   );
 
-  return progressData;
+  return progressList;
 };
+
+
 
 const getAStudentProgress = async (userId: string, courseId: string) => {
   const progress = await prisma.studentProgress.findMany({
@@ -724,12 +815,10 @@ const getAStudentProgress = async (userId: string, courseId: string) => {
 };
 
 const getLessonCompletionStatus = async (userId: string, lessonId: string) => {
-  const progress = await prisma.studentProgress.findUnique({
+  const progress = await prisma.studentProgress.findFirst({
     where: {
-      userId_lessonId: {
         userId: userId,
         lessonId: lessonId,
-      },
     },
     include: {
       lesson: {
@@ -747,7 +836,11 @@ const getLessonCompletionStatus = async (userId: string, lessonId: string) => {
   };
 };
 
-const getCourseCompletionStatus = async (userId: string, courseId: string, role: UserRoleEnum) => {
+const getCourseCompletionStatus = async (
+  userId: string,
+  courseId: string,
+  role: UserRoleEnum,
+) => {
   // Fetch the course with both lessons and tests
   const course = await prisma.course.findUnique({
     where: { id: courseId },
@@ -765,7 +858,7 @@ const getCourseCompletionStatus = async (userId: string, courseId: string, role:
     throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
   }
 
-// check if user is enrolled in the course
+  // check if user is enrolled in the course
   if (role === UserRoleEnum.EMPLOYEE) {
     const employeeEnrollment = await prisma.employeeCredential.findFirst({
       where: {
@@ -780,20 +873,19 @@ const getCourseCompletionStatus = async (userId: string, courseId: string, role:
       );
     }
   } else {
-  const enrollment = await prisma.enrolledCourse.findFirst({
-    where: {
-      userId: userId,
-      courseId: courseId,
-    },
-  }); 
-  if (!enrollment) {
-    throw new AppError(
-      httpStatus.FORBIDDEN,
-      'You are not enrolled in this course',
-    );
+    const enrollment = await prisma.enrolledCourse.findFirst({
+      where: {
+        userId: userId,
+        courseId: courseId,
+      },
+    });
+    if (!enrollment) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        'You are not enrolled in this course',
+      );
+    }
   }
-}
-
 
   //  Count all lessons + tests in the course
   const totalLessonsAndTests = course.Section.reduce(

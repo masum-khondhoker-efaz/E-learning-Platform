@@ -54,7 +54,6 @@ const createCertificateContentIntoDb = async (userId: string, data: any) => {
 };
 
 
-
 const getCertificateContentListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
@@ -180,6 +179,8 @@ const getCertificateContentListFromDb = async (userId: string, options: ISearchA
     instructorName: content.course?.instructorName,
     categoryName: content.course?.category?.name,
     title: content.title,
+    htmlContents: content.htmlContent,
+    placeholders: content.placeholders,
     createdAt: content.createdAt,
     updatedAt: content.updatedAt,
     

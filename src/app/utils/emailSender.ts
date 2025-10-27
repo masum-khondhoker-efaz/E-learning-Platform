@@ -1,7 +1,12 @@
 import nodemailer from 'nodemailer';
 import config from '../../config';
 
-const emailSender = async (subject: string, email: string, html: string) => {
+const emailSender = async (
+  subject: string,
+  email: string,
+  html: string,
+  filePath?: string, // rename for clarity
+) => {
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
@@ -15,14 +20,24 @@ const emailSender = async (subject: string, email: string, html: string) => {
     },
   });
 
-  const info = await transporter.sendMail({
-    from: '"E-learning" <efazkh@gmail.com>',
+  const mailOptions: any = {
+    from: `"E-learning" <${config.emailSender.email}>`,
     to: email,
-    subject: `${subject}`,
+    subject,
     html,
-  });
+  };
 
-  //  console.log("Message sent: %s", info.messageId);
+  if (filePath) {
+    mailOptions.attachments = [
+      {
+        filename: 'invoice.pdf',
+        path: filePath, // ✅ attach from file system
+      },
+    ];
+  }
+
+  const info = await transporter.sendMail(mailOptions);
+  console.log(`✅ Email sent to ${email}: ${info.messageId}`);
 };
 
 export default emailSender;

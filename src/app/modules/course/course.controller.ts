@@ -229,10 +229,10 @@ const updateCourse = catchAsync(async (req, res) => {
 
 const deleteCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const result = await courseService.deleteCourseItemFromDb(
-    user.id,
-    req.params.id,
-  );
+  const courseId = req.params.id;
+
+  const result = await courseService.deleteCourseItemFromDb(user.id, courseId);
+
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
@@ -240,6 +240,7 @@ const deleteCourse = catchAsync(async (req, res) => {
     data: result,
   });
 });
+
 
 export const courseController = {
   createCourse,

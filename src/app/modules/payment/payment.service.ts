@@ -79,6 +79,7 @@ const authorizePaymentWithStripeCheckout = async (
     select: {
       email: true,
       stripeCustomerId: true,
+      vatId: true,
     },
   });
 
@@ -147,6 +148,7 @@ const authorizePaymentWithStripeCheckout = async (
     userId,
     checkoutId,
     courseTitle: findCheckout.items.map(item => item.course.courseTitle).join(', '),
+    nip: customerDetails.vatId ? customerDetails.vatId : '---'
   },
 });
 

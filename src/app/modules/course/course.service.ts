@@ -767,42 +767,84 @@ const getCourseById = async (courseId: string) => {
 };
 
 const deleteCourseItemFromDb = async (userId: string, courseId: string) => {
-  return await prisma.$transaction(async tx => {
-    // fetch course + lessons
-    const course = await tx.course.findFirst({
-      where: { id: courseId /*, userId */ },
-      include: { Section: { include: { Lesson: true } } },
-    });
-    if (!course) throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+  // 1️⃣ Check if course exists
+  const existingCourse = await prisma.course.findUnique({
+    where: { id: courseId },
+    include: {
+      Section: {
+        include: {
+          Lesson: true,
+          Test: true,
+        },
+      },
+    },
+  });
 
-    // delete lesson content files
-    for (const section of course.Section) {
+  if (!existingCourse) {
+    throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+  }
+
+  // 2️⃣ Delete cloud files (before DB deletion)
+  try {
+    // Delete course thumbnail
+    if (existingCourse.courseThumbnail) {
+      await deleteFileFromSpace(existingCourse.courseThumbnail);
+    }
+
+    // Delete instructor image
+    if (existingCourse.instructorImage) {
+      await deleteFileFromSpace(existingCourse.instructorImage);
+    }
+
+    // Delete lesson videos or files (if any)
+    for (const section of existingCourse.Section) {
       for (const lesson of section.Lesson) {
-        if (lesson.content) await deleteFileFromSpace(lesson.content);
+        if (lesson.content && lesson.content.startsWith('https://')) {
+          await deleteFileFromSpace(lesson.content);
+        }
       }
     }
 
-    // delete course thumbnail
-    if (course.courseThumbnail) await deleteFileFromSpace(course.courseThumbnail);
+    // You can also extend this for PDFs, attachments, etc.
+  } catch (cloudErr) {
+    console.error('⚠️ Failed to delete one or more cloud files:', cloudErr);
+  }
 
-    // Remove references from carts / checkout (use your actual model names)
-    // Replace CartItem and CheckoutItem with the names in your Prisma schema.
-    await tx.cartItem.deleteMany({ where: { courseId } });
-    await tx.checkoutItem.deleteMany({ where: { courseId } });
-
-    // Also remove favorites/enrollments/reviews if you want
-    await tx.favoriteCourse.deleteMany({ where: { courseId } });
+  // 3️⃣ Delete dependent data manually (MongoDB-safe cascade)
+  const result = await prisma.$transaction(async tx => {
+    await tx.studentProgress.deleteMany({ where: { courseId } });
+    await tx.enrolledCourse.deleteMany({ where: { courseId } });
+    await tx.employeeCredential.deleteMany({ where: { courseId } });
+    await tx.certificate.deleteMany({ where: { courseId } });
+    await tx.certificateContent.deleteMany({ where: { courseId } });
     await tx.review.deleteMany({ where: { courseId } });
-    // await tx.enrollment.deleteMany({ where: { courseId } }); // optional
-
-    // Finally delete the course (cascades sections/lessons if configured)
-    const deletedItem = await tx.course.delete({
-      where: { id: courseId },
-      include: { Section: { include: { Lesson: true } } },
+    await tx.favoriteCourse.deleteMany({ where: { courseId } });
+    await tx.companyPurchaseItem.deleteMany({ where: { courseId } });
+    await tx.checkoutItem.deleteMany({ where: { courseId } });
+    await tx.inPersonTraining.deleteMany({ where: { courseId } });
+    await tx.cartItem.deleteMany({ where: { courseId } });
+    // Update tests (must come before section deletion)
+    await tx.test.updateMany({
+      where: { section: { courseId } },
+      data: { sectionId: null },
     });
 
-    return deletedItem;
+    await tx.lesson.deleteMany({ where: { section: { courseId } } });
+    await tx.section.deleteMany({ where: { courseId } });
+
+    // Finally, delete course
+    const deletedCourse = await tx.course.delete({
+      where: { id: courseId },
+    });
+
+    return deletedCourse;
   });
+
+  return {
+    success: true,
+    message: 'Course, files, and related data deleted successfully',
+    data: result,
+  };
 };
 
 export const courseService = {
