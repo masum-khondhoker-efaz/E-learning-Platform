@@ -50,7 +50,7 @@ router.get(
 
 router.get(
   '/my-orders',
-  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  auth(UserRoleEnum.STUDENT),
   enrolledCourseController.getMyOrders,
 );
 
