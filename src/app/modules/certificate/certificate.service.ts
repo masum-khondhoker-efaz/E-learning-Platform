@@ -59,7 +59,7 @@ const issueCertificate = async (
 
     // 3️⃣ Check 5-day waiting period
     const eligibleDate = new Date(enrollmentDate);
-    eligibleDate.setDate(eligibleDate.getDate() + 5);
+    eligibleDate.setDate(eligibleDate.getDate() + 0);
     const now = new Date();
     if (now < eligibleDate) {
       const remainingDays = Math.ceil(
@@ -607,14 +607,12 @@ const getCertificateByIdForAdmin = async (
 
   // flatten the response to include user and course details at the top level
 
-
-
   return {
     id: certificate.id,
     certificateId: certificate.certificateId,
     issueDate: certificate.issueDate,
     createdAt: certificate.createdAt,
-    
+
     // User details
     userFullName: certificate.user?.fullName,
     userEmail: certificate.user?.email,
@@ -628,7 +626,6 @@ const getCertificateByIdForAdmin = async (
     certificateTitle: certificate.certificateContent?.title,
     certificateHtmlContent: certificate.certificateContent?.htmlContent,
     mainContents: certificate.mainContents,
-
   };
 };
 
@@ -783,13 +780,14 @@ const getUserCertificates = async (
   return formatPaginationResponse(transformedCertificates, total, page, limit);
 };
 const getCertificateByCourseIdFromDb = async (
-  certificateId: string,
+  courseId: string,
   userId: string,
 ) => {
   const certificate = await prisma.certificate.findFirst({
     where: {
-      id: certificateId,
+      // id: certificateId,
       userId: userId,
+      courseId: courseId,
     },
     include: {
       user: {
@@ -819,26 +817,37 @@ const getCertificateByCourseIdFromDb = async (
 
   // flatten the response to include user and course details at the top level
 
+  const mainContents =
+    certificate.mainContents && typeof certificate.mainContents === 'string'
+      ? JSON.parse(certificate.mainContents as string)
+      : (certificate.mainContents as any);
+
   return {
     id: certificate.id,
     certificateId: certificate.certificateId,
-    issueDate: certificate.issueDate,
-    createdAt: certificate.createdAt,
+    courseId: certificate.courseId,
+    // issueDate: certificate.issueDate,
+    // createdAt: certificate.createdAt,
 
     // User details
-    userFullName: certificate.user?.fullName,
-    userEmail: certificate.user?.email,
-    userImage: certificate.user?.image,
+    // userFullName: certificate.user?.fullName,
+    // userEmail: certificate.user?.email,
+    // userImage: certificate.user?.image,
     // Course details
     courseTitle: certificate.course?.courseTitle,
-    courseShortDescription: certificate.course?.courseShortDescription,
-    courseThumbnail: certificate.course?.courseThumbnail,
-    instructorName: certificate.course?.instructorName,
+    // courseShortDescription: certificate.course?.courseShortDescription,
+    // courseThumbnail: certificate.course?.courseThumbnail,
+    // instructorName: certificate.course?.instructorName,
     // Certificate content
     certificateTitle: certificate.certificateContent?.title,
     certificateHtmlContent: certificate.certificateContent?.htmlContent,
-    placeholders: certificate.certificateContent?.placeholders,
-    mainContents: certificate.mainContents,
+    // placeholders: certificate.certificateContent?.placeholders,
+    // mainContents: certificate.mainContents,
+    fullName: mainContents?.fullName,
+    dob: mainContents?.dob,
+    startDate: mainContents?.startDate,
+    endDate: mainContents?.endDate,
+    certificateNumber: mainContents?.certificateNumber,
   };
 };
 

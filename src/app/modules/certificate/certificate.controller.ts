@@ -102,9 +102,9 @@ const getMyCertificates = catchAsync(async (req, res) => {
 
 const getCertificateByCourseId = catchAsync(async (req, res) => {
   const user = req.user as any;
-  const certificateId = req.params.id;
+  const courseId = req.params.id;
   const result = await certificateService.getCertificateByCourseIdFromDb(
-    certificateId,
+    courseId,
     user.id,
   );
 

@@ -9,7 +9,7 @@ const router = express.Router();
 
 router.post(
   '/',
-  auth(),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
   validateRequest(checkoutValidation.createSchema),
   checkoutController.createCheckout,
 );

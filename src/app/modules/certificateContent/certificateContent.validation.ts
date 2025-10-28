@@ -8,14 +8,14 @@ const certificateContentSchema = z.object({
     placeholders: z
       .array(
         z.enum([
-          '{{fullName}}',
-          '{{dob}}',
-          '{{startDate}}',
-          '{{endDate}}',
-          '{{certificateNumber}}',
+          '${fullName}',
+          '${dob}',
+          '${startDate}',
+          '${endDate}',
+          '${certificateNumber}',
         ]),
       )
-      .nonempty('At least one placeholder required'),
+      // .nonempty('At least one placeholder required'),
   }),
 });
 
@@ -27,14 +27,14 @@ const updateSchema = z.object({
     placeholders: z
       .array(
         z.enum([
-          '{{fullName}}',
-          '{{dob}}',
-          '{{startDate}}',
-          '{{endDate}}',
-          '{{certificateNumber}}',
+          '${fullName}',
+          '${dob}',
+          '${startDate}',
+          '${endDate}',
+          '${certificateNumber}',
         ]),
       )
-      .nonempty('At least one placeholder required')
+      // .nonempty('At least one placeholder required')
       .optional(),
   }),
 });

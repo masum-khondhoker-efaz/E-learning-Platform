@@ -28,7 +28,7 @@ router.get(
 
 router.get(
   '/:id',
-  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN, UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
   testController.getTestById,
 );
 
