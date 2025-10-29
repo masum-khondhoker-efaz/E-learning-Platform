@@ -11,5 +11,6 @@ export interface IUserAddInterface {
     companyEmail?: string;
     companyAddress?: string;
     companyVatId?: string;
+    companyPassword?: string;
     courseId?: string;
 }

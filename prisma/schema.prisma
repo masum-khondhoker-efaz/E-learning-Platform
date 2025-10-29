@@ -153,6 +153,7 @@ model EmployeeCredential {
   company      Company?             @relation(fields: [companyId], references: [userId])
   Certificate  Certificate[]
 
+  @@unique([purchaseItemId, courseId])
   @@map("employee_credentials")
 }
 

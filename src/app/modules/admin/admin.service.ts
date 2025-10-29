@@ -1,3 +1,4 @@
+import { Company } from './../../../../node_modules/.prisma/client/index.d';
 import prisma from '../../utils/prisma';
 import { UserRoleEnum, UserStatus, PaymentStatus } from '@prisma/client';
 import AppError from '../../errors/AppError';
@@ -16,7 +17,6 @@ import {
 } from '../../utils/searchFilter';
 import { ISearchAndFilterOptions } from '../../interface/pagination.type';
 import { create } from 'domain';
-
 
 const getDashboardStatsFromDb = async () => {
   // total users count without admin and super admin
@@ -301,30 +301,28 @@ const getAllUsersWithCompanyFromDb = async (
   });
 
   // flatten the result
-    const flattenedUsers = users.map(user => ({
-      id: user.id,
-      companyName: user.fullName,
-      companyEmail: user.email,
-      // dateOfBirth: user.dateOfBirth,
-      role: user.role,
-      // status: user.status,
-      createdAt: user.createdAt,
-      companyVatId: Array.isArray(user.Company)
-        ? user.Company[0]?.companyVatId ?? null
-        : (user.Company as any)?.companyVatId ?? null,
+  const flattenedUsers = users.map(user => ({
+    id: user.id,
+    companyName: user.fullName,
+    companyEmail: user.email,
+    // dateOfBirth: user.dateOfBirth,
+    role: user.role,
+    // status: user.status,
+    createdAt: user.createdAt,
+    companyVatId: Array.isArray(user.Company)
+      ? (user.Company[0]?.companyVatId ?? null)
+      : ((user.Company as any)?.companyVatId ?? null),
 
-      registrationDate: Array.isArray(user.Company)
-        ? user.Company[0]?.createdAt ?? null
-        : (user.Company as any)?.createdAt ?? null,
-      companyAddress: Array.isArray(user.Company)
-        ? user.Company[0]?.companyAddress ?? null
-        : (user.Company as any)?.companyAddress ?? null,
-        companyImage: user.image || null,
-    }));
-  
-  
-    return formatPaginationResponse(flattenedUsers, total, page, limit); 
+    registrationDate: Array.isArray(user.Company)
+      ? (user.Company[0]?.createdAt ?? null)
+      : ((user.Company as any)?.createdAt ?? null),
+    companyAddress: Array.isArray(user.Company)
+      ? (user.Company[0]?.companyAddress ?? null)
+      : ((user.Company as any)?.companyAddress ?? null),
+    companyImage: user.image || null,
+  }));
 
+  return formatPaginationResponse(flattenedUsers, total, page, limit);
 };
 
 const getAUsersWithCompanyFromDb = async (userId: string) => {
@@ -419,7 +417,7 @@ const addUserWithCompanyIntoDb = async (companyData: IUserAddInterface) => {
   return { newUser, newCompany };
 };
 
-const getAllCoursesFromDb = async ( options: ISearchAndFilterOptions) => {
+const getAllCoursesFromDb = async (options: ISearchAndFilterOptions) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
   // Build search query for course fields
@@ -464,8 +462,97 @@ const getAllCoursesFromDb = async ( options: ISearchAndFilterOptions) => {
 const addUserWithCourseAccessIntoDb = async (
   employeeData: IUserAddInterface,
 ) => {
-  return await prisma.$transaction(async (tx) => {
+  return await prisma.$transaction(async tx => {
     // Check existing user within transaction
+
+    //find the course
+    const course = await tx.course.findUnique({
+      where: { id: employeeData.courseId },
+    });
+    if (!course) {
+      throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+    }
+
+    //check if company exists
+
+    const existingCompany = await tx.user.findUnique({
+      where: { email: employeeData.companyEmail },
+      include: { Company: true },
+    });
+    if (existingCompany) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Company already exist');
+    }
+
+    const companyPasswordHashed = await bcrypt.hash(
+      employeeData.companyPassword || '12345678',
+      12,
+    );
+
+  
+    //create company in user model first
+    const companyInUser = await tx.user.create({
+      data: {
+        fullName: employeeData.companyName,
+        email: employeeData.companyEmail!,
+        password: companyPasswordHashed,
+        vatId: employeeData.companyVatId,
+        address: employeeData.companyAddress ? employeeData.companyAddress : '',
+        phoneNumber: employeeData.phoneNumber,
+        role: UserRoleEnum.COMPANY,
+        status: UserStatus.ACTIVE,
+        isProfileComplete: true,
+        isVerified: true,
+      },
+    });
+    if (!companyInUser) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create user');
+    }
+
+    const createOrUpdateCompany = await tx.company.create({
+      data: {
+        userId: companyInUser.id,
+        companyName: employeeData.companyName!,
+        companyEmail: employeeData.companyEmail!,
+        companyAddress: employeeData.companyAddress!,
+        companyVatId: employeeData.companyVatId!,
+      },
+    });
+
+    if (!createOrUpdateCompany) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create company');
+    }
+
+    let purchaseId;
+
+    const companyPurchase = await tx.companyPurchase.create({
+      data: {
+        companyId: companyInUser.id,
+        totalAmount: 0,
+      },
+    });
+    if (companyPurchase) {
+      const purchaseItem = await tx.companyPurchaseItem.create({
+        data: {
+          purchaseId: companyPurchase.id,
+          courseId: employeeData.courseId!,
+        },
+      });
+      purchaseId = purchaseItem.id;
+      if (!purchaseItem) {
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          'Failed to create purchase item',
+        );
+      }
+    }
+
+    if (!companyPurchase) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Failed to create company purchase',
+      );
+    }
+
     const existingUser = await tx.user.findUnique({
       where: { email: employeeData.email },
     });
@@ -503,15 +590,24 @@ const addUserWithCourseAccessIntoDb = async (
         throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
       }
 
-      await tx.employeeCredential.create({
+      const employee = await tx.employeeCredential.create({
         data: {
           userId: newUser.id,
+          purchaseItemId: purchaseId!,
+          companyId: companyInUser.id,
           courseId: employeeData.courseId,
           loginEmail: employeeData.email,
           password: hashedPassword,
           paymentStatus: PaymentStatus.COMPLETED,
         },
       });
+
+      if (!employee) {
+        throw new AppError(
+          httpStatus.BAD_REQUEST,
+          'Failed to assign course access to user',
+        );
+      }
     }
 
     // Transaction will commit if we reach here; any thrown error rolls back
@@ -661,7 +757,7 @@ export const adminService = {
   getUserByIdFromDb,
   updateUserStatusIntoDb,
   getAllUsersWithCompanyFromDb,
-  getAllCoursesFromDb,  
+  getAllCoursesFromDb,
   addUserWithCourseAccessIntoDb,
   getAUsersWithCompanyFromDb,
   addUserWithCompanyIntoDb,

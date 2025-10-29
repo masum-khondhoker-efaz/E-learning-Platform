@@ -5,7 +5,6 @@ const addUserWithCompanySchema = z.object({
     fullName: z.string().min(1, 'Full name is required').optional(),
     email: z.string().email('Invalid email format').optional(),
     password: z.string().min(8, 'Password must be at least 8 characters'),
-    // role: z.string().optional(), // e.g. "admin", "user"
     status: z.string().optional(), // e.g. "active", "inactive"
     dateOfBirth: z.string().optional(), // ISO date string e.g. "1995-10-02"
     address: z.string().optional(),
@@ -15,6 +14,7 @@ const addUserWithCompanySchema = z.object({
     companyEmail: z.string().email('Invalid company email format').optional(),
     companyAddress: z.string().optional(),
     companyVatId: z.string().optional(),
+    companyPassword: z.string().min(8, 'Company password must be at least 8 characters').optional(),
   }),
 });
 
