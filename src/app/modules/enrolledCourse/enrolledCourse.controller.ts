@@ -163,17 +163,7 @@ const getMyEnrolledCourseById = catchAsync(async (req, res) => {
 const getMyOrders = catchAsync(async (req, res) => {
   const user = req.user as any;
   const userRole = user.role;
-  if (userRole === UserRoleEnum.EMPLOYEE) {
-    const findUser = await prisma.user.findUnique({
-      where: { id: user.id, isProfileComplete: true },
-    });
-    if (!findUser) {  
-      throw new AppError(
-        httpStatus.FORBIDDEN,
-        'Please complete your profile to proceed.',
-      );
-    }
-  }
+ 
   const result = await enrolledCourseService.getMyOrdersFromDb(user.id, userRole, req.query as ISearchAndFilterOptions);
   sendResponse(res, {
     statusCode: httpStatus.OK,

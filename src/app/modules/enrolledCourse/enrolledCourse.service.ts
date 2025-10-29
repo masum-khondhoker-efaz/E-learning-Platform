@@ -961,20 +961,16 @@ const getMyEnrolledCourseByIdFromDbForEmployee = async (
   return result;
 };
 
-const getMyOrdersFromDb = async (
+const getMyOrdersForEmployeeFromDb = async (
   userId: string,
-  role: UserRoleEnum,
   options: ISearchAndFilterOptions,
 ) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
-  const isEmployee = role === UserRoleEnum.COMPANY;
 
-  // Build the complete where clause manually
   const whereQuery: any = {
-    companyId: userId, // Always filter by the current user
+    companyId: userId,
   };
 
-  // Add search conditions
   if (options.searchTerm) {
     whereQuery.OR = [
       {
@@ -988,7 +984,6 @@ const getMyOrdersFromDb = async (
     ];
   }
 
-  // Add filter conditions
   if (options.paymentStatus) {
     whereQuery.paymentStatus = options.paymentStatus;
   }
@@ -1009,7 +1004,6 @@ const getMyOrdersFromDb = async (
     };
   }
 
-  // Handle price range filters
   if (options.priceMin !== undefined || options.priceMax !== undefined) {
     whereQuery.course = {
       ...whereQuery.course,
@@ -1024,131 +1018,67 @@ const getMyOrdersFromDb = async (
     };
   }
 
-  // Date range filter for orders
   if (options.startDate || options.endDate) {
-    const dateField = isEmployee ? 'sentAt' : 'enrolledAt';
-    whereQuery[dateField] = {};
-    if (options.startDate) {
-      whereQuery[dateField].gte = new Date(options.startDate);
-    }
-    if (options.endDate) {
-      whereQuery[dateField].lte = new Date(options.endDate);
-    }
+    whereQuery.sentAt = {};
+    if (options.startDate) whereQuery.sentAt.gte = new Date(options.startDate);
+    if (options.endDate) whereQuery.sentAt.lte = new Date(options.endDate);
   }
 
-  // Sorting
-  const orderBy = {
-    [sortBy]: sortOrder,
-  };
+  const orderBy = { [sortBy]: sortOrder };
 
-  let total: number;
-  let orders: any[];
+  const total = await prisma.employeeCredential.count({ where: whereQuery });
+  if (total === 0) return formatPaginationResponse([], 0, page, limit);
 
-  if (isEmployee) {
-    // Get total count for employees
-    total = await prisma.employeeCredential.count({ where: whereQuery });
-
-    if (total === 0) {
-      return formatPaginationResponse([], 0, page, limit);
-    }
-
-    // Fetch employee orders
-    orders = await prisma.employeeCredential.findMany({
-      where: whereQuery,
-      skip,
-      take: limit,
-      orderBy,
-      select: {
-        id: true,
-        courseId: true,
-        paymentStatus: true,
-        sentAt: true,
-        purchaseItem: {
-          select: {
-            purchase: {
-              select: {
-                invoice: true,
-              },
-            },
-          },
-        },
-        course: {
-          select: {
-            id: true,
-            courseTitle: true,
-            price: true,
-            courseLevel: true,
-            courseThumbnail: true,
-            category: {
-              select: {
-                name: true,
-              },
+  const orders = await prisma.employeeCredential.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    select: {
+      id: true,
+      courseId: true,
+      paymentStatus: true,
+      sentAt: true,
+      purchaseItem: {
+        select: {
+          purchase: {
+            select: {
+              invoice: true,
             },
           },
         },
       },
-    });
-  } else {
-    // Get total count for students
-    total = await prisma.enrolledCourse.count({ where: whereQuery });
-
-    if (total === 0) {
-      return formatPaginationResponse([], 0, page, limit);
-    }
-
-    // Fetch student orders
-    orders = await prisma.enrolledCourse.findMany({
-      where: whereQuery,
-      skip,
-      take: limit,
-      orderBy,
-      select: {
-        id: true,
-        courseId: true,
-        paymentStatus: true,
-        totalAmount: true,
-        enrolledAt: true,
-        invoice: true,
-        course: {
-          select: {
-            id: true,
-            courseTitle: true,
-            price: true,
-            courseLevel: true,
-            courseThumbnail: true,
-            category: {
-              select: {
-                name: true,
-              },
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          price: true,
+          courseLevel: true,
+          courseThumbnail: true,
+          category: {
+            select: {
+              name: true,
             },
           },
         },
       },
-    });
-  }
+    },
+  });
 
-  // Transform data to consistent format
   const transformedOrders = orders.map(order => {
-    // Safely extract invoice — purchaseItem can be an array or an object
     let invoice: string | null = null;
-    if (isEmployee) {
-      const purchaseItem = (order as any).purchaseItem;
-      if (Array.isArray(purchaseItem)) {
-        invoice = purchaseItem[0]?.purchase?.invoice ?? null;
-      } else {
-        invoice = purchaseItem?.purchase?.invoice ?? null;
-      }
+    const purchaseItem = (order as any).purchaseItem;
+    if (Array.isArray(purchaseItem)) {
+      invoice = purchaseItem[0]?.purchase?.invoice ?? null;
     } else {
-      invoice = (order as any).invoice ?? null;
+      invoice = purchaseItem?.purchase?.invoice ?? null;
     }
 
     return {
       id: order.id,
       courseId: order.courseId,
       paymentStatus: order.paymentStatus,
-      enrolledAt: isEmployee
-        ? (order.sentAt ?? null)
-        : (order.enrolledAt ?? null),
+      enrolledAt: order.sentAt ?? null,
       invoice,
       courseTitle: order.course?.courseTitle ?? null,
       coursePrice: order.course?.price ?? null,
@@ -1159,6 +1089,131 @@ const getMyOrdersFromDb = async (
   });
 
   return formatPaginationResponse(transformedOrders, total, page, limit);
+};
+
+const getMyOrdersForStudentFromDb = async (
+  userId: string,
+  options: ISearchAndFilterOptions,
+) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  const whereQuery: any = {
+   userId : userId, // original logic filtered by companyId even for students; keep same behaviour
+  };
+
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+    ];
+  }
+
+  if (options.paymentStatus) {
+    whereQuery.paymentStatus = options.paymentStatus;
+  }
+
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: {
+        name: options.categoryName,
+      },
+    };
+  }
+
+  if (options.priceMin !== undefined || options.priceMax !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      price: {
+        ...(options.priceMin !== undefined && {
+          gte: Number(options.priceMin),
+        }),
+        ...(options.priceMax !== undefined && {
+          lte: Number(options.priceMax),
+        }),
+      },
+    };
+  }
+
+  if (options.startDate || options.endDate) {
+    whereQuery.enrolledAt = {};
+    if (options.startDate) whereQuery.enrolledAt.gte = new Date(options.startDate);
+    if (options.endDate) whereQuery.enrolledAt.lte = new Date(options.endDate);
+  }
+
+  const orderBy = { [sortBy]: sortOrder };
+
+  const total = await prisma.enrolledCourse.count({ where: whereQuery });
+  if (total === 0) return formatPaginationResponse([], 0, page, limit);
+
+  const orders = await prisma.enrolledCourse.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    select: {
+      id: true,
+      courseId: true,
+      paymentStatus: true,
+      totalAmount: true,
+      enrolledAt: true,
+      invoice: true,
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          price: true,
+          courseLevel: true,
+          courseThumbnail: true,
+          category: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const transformedOrders = orders.map(order => ({
+    id: order.id,
+    courseId: order.courseId,
+    paymentStatus: order.paymentStatus,
+    enrolledAt: order.enrolledAt ?? null,
+    invoice: order.invoice ?? null,
+    courseTitle: order.course?.courseTitle ?? null,
+    coursePrice: order.course?.price ?? null,
+    courseLevel: order.course?.courseLevel ?? null,
+    courseThumbnail: order.course?.courseThumbnail ?? null,
+    categoryName: order.course?.category?.name ?? null,
+  }));
+
+  return formatPaginationResponse(transformedOrders, total, page, limit);
+};
+
+const getMyOrdersFromDb = async (
+  userId: string,
+  role: UserRoleEnum,
+  options: ISearchAndFilterOptions,
+) => {
+  const isEmployeeView = role === UserRoleEnum.COMPANY;
+  if (isEmployeeView) {
+    return getMyOrdersForEmployeeFromDb(userId, options);
+  }
+  return getMyOrdersForStudentFromDb(userId, options);
 };
 
 const getMyLearningHistoryForStudentFromDb = async (
