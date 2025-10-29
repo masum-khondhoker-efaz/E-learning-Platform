@@ -390,6 +390,12 @@ const getEmployeesCourseListFromDb = async (
           },
         },
       },
+      company: {
+        select: {
+          userId: true,
+          companyName: true,
+        },
+      }
     },
   });
 
@@ -405,6 +411,7 @@ const getEmployeesCourseListFromDb = async (
     instructorName: credential.course?.instructorName,
     categoryName: credential.course?.category?.name,
     paymentStatus: credential.paymentStatus,
+    companyName: credential.company?.companyName,
     enrolledAt: credential.sentAt,
     userId: credential.user?.id,
     userFullName: credential.user?.fullName,

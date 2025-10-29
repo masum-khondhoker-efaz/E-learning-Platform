@@ -463,9 +463,7 @@ const addUserWithCourseAccessIntoDb = async (
   employeeData: IUserAddInterface,
 ) => {
   return await prisma.$transaction(async tx => {
-    // Check existing user within transaction
-
-    //find the course
+    // Validate course exists
     const course = await tx.course.findUnique({
       where: { id: employeeData.courseId },
     });
@@ -473,86 +471,144 @@ const addUserWithCourseAccessIntoDb = async (
       throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
     }
 
-    //check if company exists
+    // Ensure company email and employee email are not the same (case-insensitive)
+    if (
+      employeeData.companyEmail &&
+      employeeData.email &&
+      employeeData.companyEmail.trim().toLowerCase() ===
+        employeeData.email.trim().toLowerCase()
+    ) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Company email and employee email cannot be the same',
+      );
+    }
 
-    const existingCompany = await tx.user.findUnique({
+    // Try to find an existing company user by company email
+    const existingCompanyUser = await tx.user.findUnique({
       where: { email: employeeData.companyEmail },
       include: { Company: true },
     });
-    if (existingCompany) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'Company already exist');
-    }
 
-    const companyPasswordHashed = await bcrypt.hash(
-      employeeData.companyPassword || '12345678',
-      12,
-    );
+    let companyUserId: string;
+    let companyRecord: any = null;
 
-  
-    //create company in user model first
-    const companyInUser = await tx.user.create({
-      data: {
-        fullName: employeeData.companyName,
-        email: employeeData.companyEmail!,
-        password: companyPasswordHashed,
-        vatId: employeeData.companyVatId,
-        address: employeeData.companyAddress ? employeeData.companyAddress : '',
-        phoneNumber: employeeData.phoneNumber,
-        role: UserRoleEnum.COMPANY,
-        status: UserStatus.ACTIVE,
-        isProfileComplete: true,
-        isVerified: true,
-      },
-    });
-    if (!companyInUser) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create user');
-    }
+    if (existingCompanyUser) {
+      // Use existing company user id and existing company record (if any)
+      companyUserId = existingCompanyUser.id;
+      companyRecord = Array.isArray(existingCompanyUser.Company)
+        ? existingCompanyUser.Company[0]
+        : ((existingCompanyUser.Company as any) ?? null);
 
-    const createOrUpdateCompany = await tx.company.create({
-      data: {
-        userId: companyInUser.id,
-        companyName: employeeData.companyName!,
-        companyEmail: employeeData.companyEmail!,
-        companyAddress: employeeData.companyAddress!,
-        companyVatId: employeeData.companyVatId!,
-      },
-    });
+      // If the user exists but has no company record, create one (if enough data provided)
+      if (!companyRecord) {
+        if (
+          !employeeData.companyName ||
+          !employeeData.companyEmail ||
+          !employeeData.companyAddress ||
+          !employeeData.companyVatId
+        ) {
+          throw new AppError(
+            httpStatus.BAD_REQUEST,
+            'Incomplete company data to create missing company record',
+          );
+        }
+        companyRecord = await tx.company.create({
+          data: {
+            userId: companyUserId,
+            companyName: employeeData.companyName!,
+            companyEmail: employeeData.companyEmail!,
+            companyAddress: employeeData.companyAddress!,
+            companyVatId: employeeData.companyVatId!,
+          },
+        });
+        if (!companyRecord) {
+          throw new AppError(
+            httpStatus.BAD_REQUEST,
+            'Failed to create company',
+          );
+        }
+      }
+    } else {
+      // Create company user
+      const companyPasswordHashed = await bcrypt.hash(
+        employeeData.companyPassword || '12345678',
+        12,
+      );
 
-    if (!createOrUpdateCompany) {
-      throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create company');
-    }
-
-    let purchaseId;
-
-    const companyPurchase = await tx.companyPurchase.create({
-      data: {
-        companyId: companyInUser.id,
-        totalAmount: 0,
-      },
-    });
-    if (companyPurchase) {
-      const purchaseItem = await tx.companyPurchaseItem.create({
+      const companyInUser = await tx.user.create({
         data: {
-          purchaseId: companyPurchase.id,
-          courseId: employeeData.courseId!,
+          fullName: employeeData.companyName,
+          email: employeeData.companyEmail!,
+          password: companyPasswordHashed,
+          vatId: employeeData.companyVatId,
+          address: employeeData.companyAddress
+            ? employeeData.companyAddress
+            : '',
+          phoneNumber: employeeData.phoneNumber,
+          role: UserRoleEnum.COMPANY,
+          status: UserStatus.ACTIVE,
+          isProfileComplete: true,
+          isVerified: true,
         },
       });
-      purchaseId = purchaseItem.id;
-      if (!purchaseItem) {
-        throw new AppError(
-          httpStatus.BAD_REQUEST,
-          'Failed to create purchase item',
-        );
+      if (!companyInUser) {
+        throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create user');
+      }
+      companyUserId = companyInUser.id;
+
+      // Create company record
+      if (
+        !employeeData.companyName ||
+        !employeeData.companyEmail ||
+        !employeeData.companyAddress ||
+        !employeeData.companyVatId
+      ) {
+        throw new AppError(httpStatus.BAD_REQUEST, 'Incomplete company data');
+      }
+      companyRecord = await tx.company.create({
+        data: {
+          userId: companyUserId,
+          companyName: employeeData.companyName!,
+          companyEmail: employeeData.companyEmail!,
+          companyAddress: employeeData.companyAddress!,
+          companyVatId: employeeData.companyVatId!,
+        },
+      });
+      if (!companyRecord) {
+        throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create company');
       }
     }
 
+    // Create company purchase and purchase item for the course
+    let purchaseItemId: string | undefined;
+    const companyPurchase = await tx.companyPurchase.create({
+      data: {
+        companyId: companyUserId,
+        totalAmount: 0,
+      },
+    });
     if (!companyPurchase) {
       throw new AppError(
         httpStatus.BAD_REQUEST,
         'Failed to create company purchase',
       );
     }
+    const purchaseItem = await tx.companyPurchaseItem.create({
+      data: {
+        purchaseId: companyPurchase.id,
+        courseId: employeeData.courseId!,
+      },
+    });
+    if (!purchaseItem) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'Failed to create purchase item',
+      );
+    }
+    purchaseItemId = purchaseItem.id;
 
+    // Ensure employee (end user) does not already exist
     const existingUser = await tx.user.findUnique({
       where: { email: employeeData.email },
     });
@@ -562,7 +618,7 @@ const addUserWithCourseAccessIntoDb = async (
 
     const hashedPassword = await bcrypt.hash(employeeData.password, 12);
 
-    // Create user within transaction
+    // Create employee user
     const newUser = await tx.user.create({
       data: {
         fullName: employeeData.fullName,
@@ -581,20 +637,13 @@ const addUserWithCourseAccessIntoDb = async (
       throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create user');
     }
 
-    // Assign course access if courseId is provided, still inside transaction
+    // Assign course access if courseId is provided
     if (employeeData.courseId) {
-      const course = await tx.course.findUnique({
-        where: { id: employeeData.courseId },
-      });
-      if (!course) {
-        throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
-      }
-
       const employee = await tx.employeeCredential.create({
         data: {
           userId: newUser.id,
-          purchaseItemId: purchaseId!,
-          companyId: companyInUser.id,
+          purchaseItemId: purchaseItemId!,
+          companyId: companyUserId,
           courseId: employeeData.courseId,
           loginEmail: employeeData.email,
           password: hashedPassword,
@@ -610,7 +659,6 @@ const addUserWithCourseAccessIntoDb = async (
       }
     }
 
-    // Transaction will commit if we reach here; any thrown error rolls back
     return {
       id: newUser.id,
       fullName: newUser.fullName,
@@ -619,6 +667,7 @@ const addUserWithCourseAccessIntoDb = async (
       status: newUser.status,
       courseId: employeeData.courseId || null,
       createdAt: newUser.createdAt,
+      companyId: companyUserId,
     };
   });
 };
