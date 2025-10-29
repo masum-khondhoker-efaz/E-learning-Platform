@@ -15,6 +15,17 @@ const createCertificateContent = catchAsync(async (req, res) => {
   });
 });
 
+const getCoursesWithoutCertificateContent = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const result = await certificateContentService.getCoursesWithoutCertificateContentFromDb(user.id);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Courses without CertificateContent retrieved successfully',
+    data: result,
+  });
+});
+
 
 const getCertificateContentList = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -63,6 +74,7 @@ const deleteCertificateContent = catchAsync(async (req, res) => {
 
 export const certificateContentController = {
   createCertificateContent,
+  getCoursesWithoutCertificateContent,
   getCertificateContentList,
   getCertificateContentById,
   updateCertificateContent,

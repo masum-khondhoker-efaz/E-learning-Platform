@@ -538,7 +538,7 @@ const markCheckoutPaid = async (
 
         const credential = await tx.employeeCredential.create({
           data: {
-            companyId: company.id,
+            companyId: company.userId,
             purchaseItemId: purchaseItem.id,
             courseId: item.courseId,
             loginEmail,

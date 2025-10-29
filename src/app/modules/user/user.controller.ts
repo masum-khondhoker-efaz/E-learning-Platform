@@ -28,7 +28,7 @@ const resendUserVerificationEmail = catchAsync(async (req, res) => {
 
 const getMyProfile = catchAsync(async (req, res) => {
   const user = req.user as any;
-  if (user.role === UserRoleEnum.STUDENT || user.role === UserRoleEnum.SUPER_ADMIN || user.role === UserRoleEnum.ADMIN) {
+  if (user.role === UserRoleEnum.STUDENT || user.role === UserRoleEnum.SUPER_ADMIN || user.role === UserRoleEnum.ADMIN, user.role === UserRoleEnum.EMPLOYEE) {
     const result = await UserServices.getMyProfileFromDB(user.id);
 
     sendResponse(res, {
@@ -49,7 +49,7 @@ const getMyProfile = catchAsync(async (req, res) => {
 
 const updateMyProfile = catchAsync(async (req, res) => {
   const user = req.user as any;
-  if (user.role === UserRoleEnum.STUDENT || user.role === UserRoleEnum.SUPER_ADMIN || user.role === UserRoleEnum.ADMIN) {
+  if (user.role === UserRoleEnum.STUDENT || user.role === UserRoleEnum.SUPER_ADMIN || user.role === UserRoleEnum.ADMIN, user.role === UserRoleEnum.EMPLOYEE) {
     const result = await UserServices.updateMyProfileIntoDB(user.id, req.body);
 
     sendResponse(res, {

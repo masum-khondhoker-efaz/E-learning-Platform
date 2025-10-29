@@ -106,7 +106,7 @@ const loginUserFromDB = async (payload: { email: string; password: string }) => 
     return {
       id: user.id,
       role: user.role,
-      message: 'Please complete your profile before proceeding.',
+      message: user.isProfileComplete === false ? 'Please complete your profile before proceeding.' : true,
       accessToken,
       refreshToken: refreshTokenValue,
     };

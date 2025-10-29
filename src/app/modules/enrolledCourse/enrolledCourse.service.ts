@@ -4,17 +4,16 @@ import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
 import { studentProgressService } from '../studentProgress/studentProgress.service';
 import { ISearchAndFilterOptions } from '../../interface/pagination.type';
-import { 
-  buildSearchQuery, 
-  buildFilterQuery, 
-  combineQueries 
+import {
+  buildSearchQuery,
+  buildFilterQuery,
+  combineQueries,
 } from '../../utils/searchFilter';
-import { 
-  calculatePagination, 
-  formatPaginationResponse, 
-  getPaginationQuery 
+import {
+  calculatePagination,
+  formatPaginationResponse,
+  getPaginationQuery,
 } from '../../utils/pagination';
-
 
 const createEnrolledCourseIntoDb = async (
   userId: string,
@@ -58,7 +57,10 @@ const createEnrolledCourseIntoDb = async (
   return result;
 };
 
-const getEnrolledCourseListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+const getEnrolledCourseListFromDb = async (
+  userId: string,
+  options: ISearchAndFilterOptions,
+) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
   // Build the complete where clause manually
@@ -173,8 +175,12 @@ const getEnrolledCourseListFromDb = async (userId: string, options: ISearchAndFi
     whereQuery.course = {
       ...whereQuery.course,
       price: {
-        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
-        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+        ...(options.priceMin !== undefined && {
+          gte: Number(options.priceMin),
+        }),
+        ...(options.priceMax !== undefined && {
+          lte: Number(options.priceMax),
+        }),
       },
     };
   }
@@ -236,7 +242,9 @@ const getEnrolledCourseListFromDb = async (userId: string, options: ISearchAndFi
   return formatPaginationResponse(enrolledCourses, total, page, limit);
 };
 
-const getEmployeesCourseListFromDb = async (options: ISearchAndFilterOptions) => {
+const getEmployeesCourseListFromDb = async (
+  options: ISearchAndFilterOptions,
+) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
   // Build the complete where clause manually
@@ -325,8 +333,12 @@ const getEmployeesCourseListFromDb = async (options: ISearchAndFilterOptions) =>
     whereQuery.course = {
       ...whereQuery.course,
       price: {
-        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
-        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+        ...(options.priceMin !== undefined && {
+          gte: Number(options.priceMin),
+        }),
+        ...(options.priceMax !== undefined && {
+          lte: Number(options.priceMax),
+        }),
       },
     };
   }
@@ -487,7 +499,10 @@ const getEnrolledCourseByStudentIdFromDb = async (
   };
 };
 
-const getMyEnrolledCoursesFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+const getMyEnrolledCoursesFromDb = async (
+  userId: string,
+  options: ISearchAndFilterOptions,
+) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
   // Build the complete where clause manually
@@ -579,8 +594,12 @@ const getMyEnrolledCoursesFromDb = async (userId: string, options: ISearchAndFil
     whereQuery.course = {
       ...whereQuery.course,
       price: {
-        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
-        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+        ...(options.priceMin !== undefined && {
+          gte: Number(options.priceMin),
+        }),
+        ...(options.priceMax !== undefined && {
+          lte: Number(options.priceMax),
+        }),
       },
     };
   }
@@ -634,7 +653,8 @@ const getMyEnrolledCoursesFromDb = async (userId: string, options: ISearchAndFil
   });
 
   // Get progress data for all courses
-  const courseProgressList = await studentProgressService.getAllCourseProgress(userId);
+  const courseProgressList =
+    await studentProgressService.getAllCourseProgress(userId);
   const progressMap = new Map<string, (typeof courseProgressList)[number]>();
   courseProgressList.forEach(progress => {
     progressMap.set(progress.courseId, progress);
@@ -669,12 +689,15 @@ const getMyEnrolledCoursesFromDb = async (userId: string, options: ISearchAndFil
   return formatPaginationResponse(transformedData, total, page, limit);
 };
 
-const getMyEnrolledCoursesForEmployeeFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
+const getMyEnrolledCoursesForEmployeeFromDb = async (
+  userId: string,
+  options: ISearchAndFilterOptions,
+) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
   // Build the complete where clause manually
   const whereQuery: any = {
-    userId: userId, // Always filter by the current user
+    OR: [{ userId: userId }, { companyId: userId }],
     paymentStatus: PaymentStatus.COMPLETED, // Only completed payments
   };
 
@@ -761,8 +784,12 @@ const getMyEnrolledCoursesForEmployeeFromDb = async (userId: string, options: IS
     whereQuery.course = {
       ...whereQuery.course,
       price: {
-        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
-        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+        ...(options.priceMin !== undefined && {
+          gte: Number(options.priceMin),
+        }),
+        ...(options.priceMax !== undefined && {
+          lte: Number(options.priceMax),
+        }),
       },
     };
   }
@@ -870,7 +897,7 @@ const getMyEnrolledCourseByIdFromDb = async (
   }
 
   // Show which lessons are completed from the studentProgress table
-  const progressData  = await prisma.studentProgress.findMany({
+  const progressData = await prisma.studentProgress.findMany({
     where: {
       userId: userId,
       courseId: enrolledCourseId,
@@ -882,13 +909,13 @@ const getMyEnrolledCourseByIdFromDb = async (
   });
   const completedLessonIds = progressData.map(progress => progress.lessonId);
 
-  // Mark lessons as completed  
+  // Mark lessons as completed
   result.course.Section.forEach(section => {
     section.Lesson.forEach(lesson => {
       (lesson as any).isCompleted = completedLessonIds.includes(lesson.id);
     });
   });
-  
+
   return result;
 };
 
@@ -899,8 +926,8 @@ const getMyEnrolledCourseByIdFromDbForEmployee = async (
   const result = await prisma.employeeCredential.findFirst({
     where: {
       courseId: enrolledCourseId,
-      userId: userId,
       paymentStatus: PaymentStatus.COMPLETED,
+      OR: [{ userId: userId }, { companyId: userId }],
     },
     select: {
       userId: true,
@@ -927,13 +954,17 @@ const getMyEnrolledCourseByIdFromDbForEmployee = async (
   return result;
 };
 
-const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum, options: ISearchAndFilterOptions) => {
+const getMyOrdersFromDb = async (
+  userId: string,
+  role: UserRoleEnum,
+  options: ISearchAndFilterOptions,
+) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
-  const isEmployee = role === UserRoleEnum.EMPLOYEE;
+  const isEmployee = role === UserRoleEnum.COMPANY;
 
   // Build the complete where clause manually
   const whereQuery: any = {
-    userId: userId, // Always filter by the current user
+    companyId: userId, // Always filter by the current user
   };
 
   // Add search conditions
@@ -976,8 +1007,12 @@ const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum, options: IS
     whereQuery.course = {
       ...whereQuery.course,
       price: {
-        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
-        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+        ...(options.priceMin !== undefined && {
+          gte: Number(options.priceMin),
+        }),
+        ...(options.priceMax !== undefined && {
+          lte: Number(options.priceMax),
+        }),
       },
     };
   }
@@ -1021,6 +1056,15 @@ const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum, options: IS
         courseId: true,
         paymentStatus: true,
         sentAt: true,
+        purchaseItem: {
+          select: {
+            purchase: {
+              select: {
+                invoice: true,
+              },
+            },
+          },
+        },
         course: {
           select: {
             id: true,
@@ -1077,40 +1121,51 @@ const getMyOrdersFromDb = async (userId: string, role: UserRoleEnum, options: IS
   }
 
   // Transform data to consistent format
-  const transformedOrders = orders.map(order => ({
-    id: order.id,
-    courseId: order.courseId,
-    paymentStatus: order.paymentStatus,
-    enrolledAt: isEmployee
-      ? (order.sentAt ?? null)
-      : (order.enrolledAt ?? null),
-    invoice: isEmployee ? undefined : order.invoice,
-    courseTitle: order.course?.courseTitle,
-    coursePrice: order.course?.price,
-    courseLevel: order.course?.courseLevel,
-    courseThumbnail: order.course?.courseThumbnail,
-    categoryName: order.course?.category?.name,
-  }));
+  const transformedOrders = orders.map(order => {
+    // Safely extract invoice — purchaseItem can be an array or an object
+    let invoice: string | null = null;
+    if (isEmployee) {
+      const purchaseItem = (order as any).purchaseItem;
+      if (Array.isArray(purchaseItem)) {
+        invoice = purchaseItem[0]?.purchase?.invoice ?? null;
+      } else {
+        invoice = purchaseItem?.purchase?.invoice ?? null;
+      }
+    } else {
+      invoice = (order as any).invoice ?? null;
+    }
+
+    return {
+      id: order.id,
+      courseId: order.courseId,
+      paymentStatus: order.paymentStatus,
+      enrolledAt: isEmployee
+        ? (order.sentAt ?? null)
+        : (order.enrolledAt ?? null),
+      invoice,
+      courseTitle: order.course?.courseTitle ?? null,
+      coursePrice: order.course?.price ?? null,
+      courseLevel: order.course?.courseLevel ?? null,
+      courseThumbnail: order.course?.courseThumbnail ?? null,
+      categoryName: order.course?.category?.name ?? null,
+    };
+  });
 
   return formatPaginationResponse(transformedOrders, total, page, limit);
 };
 
-const getMyLearningHistoryFromDb = async (
+const getMyLearningHistoryForStudentFromDb = async (
   userId: string,
-  role: UserRoleEnum,
-  options: ISearchAndFilterOptions
+  options: ISearchAndFilterOptions,
 ) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
-  const isEmployee = role === UserRoleEnum.EMPLOYEE;
 
-  // Build the complete where clause manually
   const whereQuery: any = {
-    userId: userId, // Always filter by the current user
-    paymentStatus: PaymentStatus.COMPLETED, // Only completed payments
-    progress: { gt: 0 }, // Only courses with progress greater than 0
+    userId,
+    paymentStatus: PaymentStatus.COMPLETED,
+    progress: { gt: 0 },
   };
 
-  // Add search conditions
   if (options.searchTerm) {
     whereQuery.OR = [
       {
@@ -1150,7 +1205,6 @@ const getMyLearningHistoryFromDb = async (
     ];
   }
 
-  // Add filter conditions
   if (options.courseLevel) {
     whereQuery.course = {
       ...whereQuery.course,
@@ -1161,9 +1215,7 @@ const getMyLearningHistoryFromDb = async (
   if (options.categoryName) {
     whereQuery.course = {
       ...whereQuery.course,
-      category: {
-        name: options.categoryName,
-      },
+      category: { name: options.categoryName },
     };
   }
 
@@ -1174,136 +1226,65 @@ const getMyLearningHistoryFromDb = async (
     };
   }
 
-  // Filter by completion status (if provided)
-  if (options.isCompleted !== undefined && isEmployee) {
-    whereQuery.isCompleted = options.isCompleted;
+  if (options.priceMin !== undefined || options.priceMax !== undefined) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      price: {
+        ...(options.priceMin !== undefined && { gte: Number(options.priceMin) }),
+        ...(options.priceMax !== undefined && { lte: Number(options.priceMax) }),
+      },
+    };
   }
 
-  // Filter by progress range (for employees)
-  if (isEmployee && (options.progressMin !== undefined || options.progressMax !== undefined)) {
-    whereQuery.progress = {};
-    if (options.progressMin !== undefined) {
-      whereQuery.progress.gte = Number(options.progressMin);
-    }
-    if (options.progressMax !== undefined) {
-      whereQuery.progress.lte = Number(options.progressMax);
-    }
-  }
-
-  // Date range filter for enrollment date
   if (options.startDate || options.endDate) {
-    const dateField = isEmployee ? 'sentAt' : 'enrolledAt';
-    whereQuery[dateField] = {};
-    if (options.startDate) {
-      whereQuery[dateField].gte = new Date(options.startDate);
-    }
-    if (options.endDate) {
-      whereQuery[dateField].lte = new Date(options.endDate);
-    }
+    whereQuery.enrolledAt = {};
+    if (options.startDate) whereQuery.enrolledAt.gte = new Date(options.startDate);
+    if (options.endDate) whereQuery.enrolledAt.lte = new Date(options.endDate);
   }
 
-  // Sorting
-  const orderBy = {
-    [sortBy]: sortOrder,
-  };
+  const orderBy = { [sortBy]: sortOrder };
 
-  let total: number;
-  let learningHistory: any[];
+  const total = await prisma.enrolledCourse.count({ where: whereQuery });
+  if (total === 0) return formatPaginationResponse([], 0, page, limit);
 
-  if (isEmployee) {
-    // Get total count for employees
-    total = await prisma.employeeCredential.count({ where: whereQuery });
-
-    if (total === 0) {
-      return formatPaginationResponse([], 0, page, limit);
-    }
-
-    // Fetch employee learning history
-    learningHistory = await prisma.employeeCredential.findMany({
-      where: whereQuery,
-      skip,
-      take: limit,
-      orderBy,
-      select: {
-        id: true,
-        courseId: true,
-        paymentStatus: true,
-        sentAt: true,
-        progress: true,
-        isCompleted: true,
-        course: {
-          select: {
-            id: true,
-            courseTitle: true,
-            courseShortDescription: true,
-            courseLevel: true,
-            instructorName: true,
-            courseThumbnail: true,
-            totalSections: true,
-            totalLessons: true,
-            totalDuration: true,
-            category: {
-              select: {
-                name: true,
-              },
-            },
-          },
+  const learningHistory = await prisma.enrolledCourse.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    select: {
+      id: true,
+      courseId: true,
+      paymentStatus: true,
+      enrolledAt: true,
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          courseShortDescription: true,
+          courseLevel: true,
+          instructorName: true,
+          courseThumbnail: true,
+          totalSections: true,
+          totalLessons: true,
+          totalDuration: true,
+          category: { select: { name: true } },
         },
       },
-    });
-  } else {
-    // Get total count for students
-    total = await prisma.enrolledCourse.count({ where: whereQuery });
+    },
+  });
 
-    if (total === 0) {
-      return formatPaginationResponse([], 0, page, limit);
-    }
+  const courseProgressList = await studentProgressService.getAllCourseProgress(userId);
+  const progressMap = new Map<string, any>();
+  courseProgressList.forEach(progress => progressMap.set(progress.courseId, progress));
 
-    // Fetch student learning history
-    learningHistory = await prisma.enrolledCourse.findMany({
-      where: whereQuery,
-      skip,
-      take: limit,
-      orderBy,
-      select: {
-        id: true,
-        courseId: true,
-        paymentStatus: true,
-        enrolledAt: true,
-        course: {
-          select: {
-            id: true,
-            courseTitle: true,
-            courseShortDescription: true,
-            courseLevel: true,
-            instructorName: true,
-            courseThumbnail: true,
-            totalSections: true,
-            totalLessons: true,
-            totalDuration: true,
-            category: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        },
-      },
-    });
-  }
-
-  // Get progress data for students
-  let progressMap = new Map<string, any>();
-  if (!isEmployee) {
-    const courseProgressList = await studentProgressService.getAllCourseProgress(userId);
-    courseProgressList.forEach(progress => {
-      progressMap.set(progress.courseId, progress);
-    });
-  }
-
-  // Transform data to consistent format
   const transformedHistory = learningHistory.map(item => {
-    const baseData = {
+    const progress = progressMap.get(item.courseId) || {
+      completedLessons: 0,
+      totalLessons: 0,
+      progressPercentage: 0,
+    };
+    return {
       id: item.id,
       courseId: item.courseId,
       courseTitle: item.course?.courseTitle,
@@ -1316,35 +1297,176 @@ const getMyLearningHistoryFromDb = async (
       totalDuration: item.course?.totalDuration,
       categoryName: item.course?.category?.name,
       paymentStatus: item.paymentStatus,
-      enrolledAt: isEmployee
-        ? (item.sentAt ?? null)
-        : (item.enrolledAt ?? null),
+      enrolledAt: item.enrolledAt ?? null,
+      progress: progress.progressPercentage,
+      completedLessons: progress.completedLessons,
+      isCompleted: progress.progressPercentage === 100,
     };
-
-    if (isEmployee) {
-      return {
-        ...baseData,
-        progress: item.progress || 0,
-        isCompleted: item.isCompleted || false,
-      };
-    } else {
-      const progress = progressMap.get(item.courseId) || {
-        completedLessons: 0,
-        totalLessons: 0,
-        progressPercentage: 0,
-      };
-      return {
-        ...baseData,
-        progress: progress.progressPercentage,
-        completedLessons: progress.completedLessons,
-        isCompleted: progress.progressPercentage === 100,
-      };
-    }
   });
 
   return formatPaginationResponse(transformedHistory, total, page, limit);
 };
 
+const getMyLearningHistoryForCompanyEmployeeFromDb = async (
+  userId: string,
+  options: ISearchAndFilterOptions,
+) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  const whereQuery: any = {
+    OR: [{ userId }, { companyId: userId }],
+    paymentStatus: PaymentStatus.COMPLETED,
+    progress: { gt: 0 },
+  };
+
+  if (options.searchTerm) {
+    whereQuery.OR = [
+      {
+        course: {
+          courseTitle: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          courseShortDescription: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          instructorName: {
+            contains: options.searchTerm,
+            mode: 'insensitive' as const,
+          },
+        },
+      },
+      {
+        course: {
+          category: {
+            name: {
+              contains: options.searchTerm,
+              mode: 'insensitive' as const,
+            },
+          },
+        },
+      },
+    ];
+  }
+
+  if (options.courseLevel) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      courseLevel: options.courseLevel,
+    };
+  }
+
+  if (options.categoryName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      category: { name: options.categoryName },
+    };
+  }
+
+  if (options.instructorName) {
+    whereQuery.course = {
+      ...whereQuery.course,
+      instructorName: options.instructorName,
+    };
+  }
+
+  if (options.isCompleted !== undefined) {
+    whereQuery.isCompleted = options.isCompleted;
+  }
+
+  if (options.progressMin !== undefined || options.progressMax !== undefined) {
+    whereQuery.progress = {};
+    if (options.progressMin !== undefined) whereQuery.progress.gte = Number(options.progressMin);
+    if (options.progressMax !== undefined) whereQuery.progress.lte = Number(options.progressMax);
+  }
+
+  if (options.startDate || options.endDate) {
+    whereQuery.sentAt = {};
+    if (options.startDate) whereQuery.sentAt.gte = new Date(options.startDate);
+    if (options.endDate) whereQuery.sentAt.lte = new Date(options.endDate);
+  }
+
+  const orderBy = { [sortBy]: sortOrder };
+
+  const total = await prisma.employeeCredential.count({ where: whereQuery });
+  if (total === 0) return formatPaginationResponse([], 0, page, limit);
+
+  const learningHistory = await prisma.employeeCredential.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    select: {
+      id: true,
+      courseId: true,
+      paymentStatus: true,
+      sentAt: true,
+      progress: true,
+      isCompleted: true,
+      course: {
+        select: {
+          id: true,
+          courseTitle: true,
+          courseShortDescription: true,
+          courseLevel: true,
+          instructorName: true,
+          courseThumbnail: true,
+          totalSections: true,
+          totalLessons: true,
+          totalDuration: true,
+          category: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  const transformedHistory = learningHistory.map(item => ({
+    id: item.id,
+    courseId: item.courseId,
+    courseTitle: item.course?.courseTitle,
+    courseShortDescription: item.course?.courseShortDescription,
+    courseLevel: item.course?.courseLevel,
+    instructorName: item.course?.instructorName,
+    courseThumbnail: item.course?.courseThumbnail,
+    totalSections: item.course?.totalSections,
+    totalLessons: item.course?.totalLessons,
+    totalDuration: item.course?.totalDuration,
+    categoryName: item.course?.category?.name,
+    paymentStatus: item.paymentStatus,
+    enrolledAt: item.sentAt ?? null,
+    progress: item.progress || 0,
+    isCompleted: item.isCompleted || false,
+  }));
+
+  return formatPaginationResponse(transformedHistory, total, page, limit);
+};
+
+/**
+ * Backwards-compatible wrapper. Prefer calling the role-specific functions:
+ * - getMyLearningHistoryForStudentFromDb
+ * - getMyLearningHistoryForCompanyEmployeeFromDb
+ */
+const getMyLearningHistoryFromDb = async (
+  userId: string,
+  role: UserRoleEnum,
+  options: ISearchAndFilterOptions,
+) => {
+  const isCompanyOrEmployee =
+    role === UserRoleEnum.COMPANY || role === UserRoleEnum.EMPLOYEE;
+  if (isCompanyOrEmployee) {
+    return getMyLearningHistoryForCompanyEmployeeFromDb(userId, options);
+  }
+  return getMyLearningHistoryForStudentFromDb(userId, options);
+};
 
 const updateEnrolledCourseIntoDb = async (
   userId: string,

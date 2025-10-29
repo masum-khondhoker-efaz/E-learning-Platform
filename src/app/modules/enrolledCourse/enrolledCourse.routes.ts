@@ -38,25 +38,25 @@ router.get(
 
 router.get(
   '/my-courses',
-  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE, UserRoleEnum.COMPANY),
   enrolledCourseController.getMyEnrolledCourses,
 );
 
 router.get(
   '/my-courses/:id',
-  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE, UserRoleEnum.COMPANY),
   enrolledCourseController.getMyEnrolledCourseById,
 );
 
 router.get(
   '/my-orders',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.COMPANY),
   enrolledCourseController.getMyOrders,
 );
 
 router.get(
   '/learning-history',
-  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE, UserRoleEnum.COMPANY),
   enrolledCourseController.getMyLearningHistory,
 )
 

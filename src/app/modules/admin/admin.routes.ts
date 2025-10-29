@@ -43,6 +43,12 @@ router.get(
   adminController.getAUsersWithCompany,
 );
 
+router.get(
+  '/courses',
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  adminController.getAllCourses,
+);
+
 router.post(
   '/users-with-course-access',
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),

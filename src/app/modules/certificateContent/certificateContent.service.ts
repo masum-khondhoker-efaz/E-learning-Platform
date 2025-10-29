@@ -53,6 +53,24 @@ const createCertificateContentIntoDb = async (userId: string, data: any) => {
   return certificateTemplate;
 };
 
+const getCoursesWithoutCertificateContentFromDb = async (userId: string) => {
+  // fetch courses that do not have associated certificate content
+  const courses = await prisma.course.findMany({
+    where: {
+      CertificateContent: {
+        none: {},
+      },
+    },
+    select: {
+      id: true,
+      courseTitle: true,
+      // courseLevel: true,
+      // instructorName: true,
+    },
+  });
+
+  return courses;
+};
 
 const getCertificateContentListFromDb = async (userId: string, options: ISearchAndFilterOptions) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
@@ -275,6 +293,7 @@ const deleteCertificateContentItemFromDb = async (
 
 export const certificateContentService = {
   createCertificateContentIntoDb,
+  getCoursesWithoutCertificateContentFromDb,
   getCertificateContentListFromDb,
   getCertificateContentByIdFromDb,
   updateCertificateContentIntoDb,

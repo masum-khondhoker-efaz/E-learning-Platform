@@ -126,7 +126,7 @@ const authorizePaymentWithStripeCheckout = async (
 
   // Create Stripe Checkout Session (supports Card + P24)
   const session = await stripe.checkout.sessions.create({
-  payment_method_types: ['card', 'p24', 'blik'],
+  payment_method_types: ['card', 'p24'],
   line_items: [
     {
       price_data: {

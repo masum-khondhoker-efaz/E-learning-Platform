@@ -92,6 +92,28 @@ const getAUsersWithCompany = catchAsync(async (req, res) => {
   });
 });
 
+const getAllCourses = catchAsync(async (req, res) => {
+  const filters = pickValidFields(req.query, [
+      'page',
+      'limit',
+      'sortBy',
+      'sortOrder',
+      'searchTerm',
+      'category',
+      'level',
+      'status',
+      'title',
+    ]);
+  const result = await adminService.getAllCoursesFromDb(filters);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Course list retrieved successfully',
+    data: result.data,
+    meta: result.meta,
+  });
+});
+
 const addUserWithCourseAccess = catchAsync(async (req, res) => {
   const result = await adminService.addUserWithCourseAccessIntoDb(req.body);
   sendResponse(res, {
@@ -160,6 +182,7 @@ export const adminController = {
   getUserById,
   updateUserStatus,
   getAllUsersWithCompany,
+  getAllCourses,
   addUserWithCourseAccess,
   getAUsersWithCompany,
   getAllEnrolledStudents,

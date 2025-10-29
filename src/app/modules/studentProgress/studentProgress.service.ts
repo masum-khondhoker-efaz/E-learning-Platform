@@ -1,4 +1,4 @@
-import { Test } from './../../../../node_modules/.prisma/client/index.d';
+import { Test, EmployeeCredential } from './../../../../node_modules/.prisma/client/index.d';
 import prisma from '../../utils/prisma';
 import AppError from '../../errors/AppError';
 import httpStatus from 'http-status';
@@ -606,7 +606,13 @@ const updateEnrolledCourseProgress = async (tx: any, userId: string, courseId: s
   });
 
   if (!enrolled) {
-    // no enrolled row — nothing to update (or throw depending on your policy)
+    await tx.employeeCredential.updateMany({
+      where: { userId, courseId },
+      data: { 
+        progress: progress.overallProgress,
+        isCompleted: progress.overallProgress === 100,
+      },
+    });
     return progress;
   }
 

@@ -440,43 +440,62 @@ const getTestAttemptListFromDb = async (userId: string,options: ISearchAndFilter
   });
 
   // Transform data to include additional calculated fields
-  const transformedAttempts = testAttempts.map(attempt => ({
-    id: attempt.id,
-    userId: attempt.userId,
-    testId: attempt.testId,
-    score: attempt.score,
-    percentage: attempt.percentage,
-    isPassed: attempt.isPassed,
-    totalMarks: attempt.totalMarks,
-    timeSpent: attempt.timeSpent,
-    status: attempt.status,
-    completedAt: attempt.completedAt,
-    createdAt: attempt.createdAt,
-    
-    // User details
-    userFullName: attempt.user?.fullName,
-    userEmail: attempt.user?.email,
-    userImage: attempt.user?.image,
-    
-    // Test details
-    testTitle: attempt.test?.title,
-    testTotalMarks: attempt.test?.totalMarks,
-    testPassingScore: attempt.test?.passingScore,
-    
-    // Course details
-    sectionId: attempt.test?.section?.id,
-    sectionTitle: attempt.test?.section?.title,
-    courseId: attempt.test?.section?.course?.id,
-    courseTitle: attempt.test?.section?.course?.courseTitle,
-    courseLevel: attempt.test?.section?.course?.courseLevel,
-    categoryName: attempt.test?.section?.course?.category?.name,
-    
-    // Response statistics
-    totalResponses: attempt._count.responses,
-    correctResponses: attempt.responses.filter(r => r.isCorrect === true).length,
-    incorrectResponses: attempt.responses.filter(r => r.isCorrect === false).length,
-    pendingResponses: attempt.responses.filter(r => r.status === 'SUBMITTED').length,
-  }));
+  const transformedAttempts = testAttempts.map(attempt => {
+    const totalResponses = attempt._count.responses || 0;
+    const correctResponses = attempt.responses.filter(r => r.isCorrect === true).length;
+    const incorrectResponses = attempt.responses.filter(r => r.isCorrect === false).length;
+    const pendingResponses = attempt.responses.filter(r => r.status === ResponseStatus.SUBMITTED).length;
+
+    const percentageFormatted =
+      attempt.percentage != null ? Number(attempt.percentage).toFixed(2) : 0.00;
+    const scoreFormatted =
+      attempt.score != null ? Number(attempt.score).toFixed(2) : 0.00;
+    const accuracyRate =
+      totalResponses > 0
+        ? ((correctResponses / totalResponses) * 100).toFixed(2)
+        : 0.00;
+
+    return {
+      id: attempt.id,
+      userId: attempt.userId,
+      testId: attempt.testId,
+      score: attempt.score,
+      percentage: Number(percentageFormatted),
+      isPassed: attempt.isPassed,
+      totalMarks: attempt.totalMarks,
+      timeSpent: attempt.timeSpent,
+      status: attempt.status,
+      completedAt: attempt.completedAt,
+      createdAt: attempt.createdAt,
+
+      // User details
+      userFullName: attempt.user?.fullName,
+      userEmail: attempt.user?.email,
+      userImage: attempt.user?.image,
+
+      // Test details
+      testTitle: attempt.test?.title,
+      testTotalMarks: attempt.test?.totalMarks,
+      testPassingScore: attempt.test?.passingScore,
+
+      // Course details
+      sectionId: attempt.test?.section?.id,
+      sectionTitle: attempt.test?.section?.title,
+      courseId: attempt.test?.section?.course?.id,
+      courseTitle: attempt.test?.section?.course?.courseTitle,
+      courseLevel: attempt.test?.section?.course?.courseLevel,
+      categoryName: attempt.test?.section?.course?.category?.name,
+
+      // Response statistics
+      totalResponses,
+      correctResponses,
+      incorrectResponses,
+      pendingResponses,
+
+      // Performance indicators
+      accuracyRate,
+    };
+  });
 
   return formatPaginationResponse(transformedAttempts, total, page, limit);
 };
@@ -602,9 +621,9 @@ const gradeShortAnswers = async (
         );
       }
 
-      if (response.status === ResponseStatus.MANUAL_GRADED) {
-        throw new AppError(httpStatus.BAD_REQUEST, 'Response already graded');
-      }
+      // if (response.status === ResponseStatus.MANUAL_GRADED) {
+      //   throw new AppError(httpStatus.BAD_REQUEST, 'Response already graded');
+      // }
 
       // Validate marks don't exceed question maximum
       if (grading.marks > response.question.marks) {

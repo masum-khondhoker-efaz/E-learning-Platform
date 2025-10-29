@@ -150,7 +150,7 @@ model EmployeeCredential {
   user         User?                @relation(fields: [userId], references: [id])
   course       Course               @relation(fields: [courseId], references: [id])
   purchaseItem CompanyPurchaseItem? @relation(fields: [purchaseItemId], references: [id])
-  company      Company?             @relation(fields: [companyId], references: [id])
+  company      Company?             @relation(fields: [companyId], references: [userId])
   Certificate  Certificate[]
 
   @@map("employee_credentials")
@@ -591,7 +591,7 @@ model Certificate {
 
   user               User?               @relation(fields: [userId], references: [id])
   employeeCred       EmployeeCredential? @relation(fields: [employeeCredId], references: [id])
-  company            Company?            @relation(fields: [companyId], references: [id])
+  company            Company?            @relation(fields: [companyId], references: [userId])
   course             Course              @relation(fields: [courseId], references: [id])
   certificateContent CertificateContent  @relation(fields: [certificateContentId], references: [id])
 

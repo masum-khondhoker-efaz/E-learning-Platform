@@ -15,6 +15,12 @@ router.post(
 );
 
 router.get(
+  '/courses-without-certificate-content',
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  certificateContentController.getCoursesWithoutCertificateContent,
+)
+
+router.get(
   '/',
   auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
   certificateContentController.getCertificateContentList,

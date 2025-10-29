@@ -96,7 +96,7 @@ const getMyEnrolledCourses = catchAsync(async (req, res) => {
       meta: result.meta,
     });
   }
-  if (user.role === UserRoleEnum.EMPLOYEE) {
+  if (user.role === UserRoleEnum.EMPLOYEE || user.role === UserRoleEnum.COMPANY) {
     const findUser = await prisma.user.findUnique({
       where: { id: user.id, isProfileComplete: true },
     });
@@ -137,7 +137,7 @@ const getMyEnrolledCourseById = catchAsync(async (req, res) => {
       data: result,
     });
   }
-  if (user.role === UserRoleEnum.EMPLOYEE) {
+  if (user.role === UserRoleEnum.EMPLOYEE || user.role === UserRoleEnum.COMPANY) {
     const findUser = await prisma.user.findUnique({
       where: { id: user.id, isProfileComplete: true },
     });

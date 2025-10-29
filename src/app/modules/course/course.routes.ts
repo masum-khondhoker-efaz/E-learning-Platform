@@ -26,7 +26,7 @@ router.get(
 
 router.get(
   '/details/:id',
-  auth(UserRoleEnum.STUDENT),
+  auth(UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE, UserRoleEnum.COMPANY),
   courseController.getACourseById,
 );
 

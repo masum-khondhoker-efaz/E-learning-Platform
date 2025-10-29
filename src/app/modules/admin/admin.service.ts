@@ -431,6 +431,48 @@ const addUserWithCompanyIntoDb = async (companyData: IUserAddInterface) => {
   return { newUser, newCompany };
 };
 
+const getAllCoursesFromDb = async ( options: ISearchAndFilterOptions) => {
+  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+
+  // Build search query for course fields
+  const searchFields = ['courseTitle'];
+  const searchQuery = buildSearchQuery({
+    searchTerm: options.searchTerm,
+    searchFields,
+  });
+
+  // Build filter query
+  const filterFields: Record<string, any> = {
+    // ...(options.category && { category: options.category }),
+    ...(options.courseLevel && { level: options.courseLevel }),
+    ...(options.status && { status: options.status }),
+  };
+  const filterQuery = buildFilterQuery(filterFields);
+
+  // Combine all queries
+  const whereQuery = combineQueries(searchQuery, filterQuery);
+
+  // Sorting
+  const orderBy = getPaginationQuery(sortBy, sortOrder).orderBy;
+
+  // Fetch total count for pagination
+  const total = await prisma.course.count({ where: whereQuery });
+
+  // Fetch paginated data
+  const courses = await prisma.course.findMany({
+    where: whereQuery,
+    skip,
+    take: limit,
+    orderBy,
+    select: {
+      id: true,
+      courseTitle: true,
+    },
+  });
+
+  return formatPaginationResponse(courses, total, page, limit);
+};
+
 const addUserWithCourseAccessIntoDb = async (
   employeeData: IUserAddInterface,
 ) => {
@@ -626,6 +668,7 @@ export const adminService = {
   getUserByIdFromDb,
   updateUserStatusIntoDb,
   getAllUsersWithCompanyFromDb,
+  getAllCoursesFromDb,  
   addUserWithCourseAccessIntoDb,
   getAUsersWithCompanyFromDb,
   addUserWithCompanyIntoDb,

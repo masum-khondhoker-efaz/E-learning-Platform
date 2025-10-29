@@ -65,12 +65,12 @@ const registerUserIntoDB = async (payload: {
     if (existingUser) {
       const { otp, otpToken } = generateOtpToken(emailsToCheck[0].email);
 
-  // send OTP email
+      // send OTP email
       const recipientName = existingUser.fullName ?? '';
-    await emailSender(
-      'Verify Your Email',
-      emailsToCheck[0].email,
-      `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+      await emailSender(
+        'Verify Your Email',
+        emailsToCheck[0].email,
+        `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
           <table width="100%" style="border-collapse: collapse;">
             <tr>
               <td style="background-color: #46BEF2; padding: 20px; text-align: center; color: #000000; border-radius: 10px 10px 0 0;">
@@ -95,8 +95,8 @@ const registerUserIntoDB = async (payload: {
             </tr>
           </table>
         </div>`,
-    );
-    return otpToken;
+      );
+      return otpToken;
     }
   }
 
@@ -109,12 +109,16 @@ const registerUserIntoDB = async (payload: {
   }
   const hashedPassword = await bcrypt.hash(payload.password, 12);
 
-  let createdUser: { id: string; fullName: string; email: string; role: UserRoleEnum } | null =
-    null;
+  let createdUser: {
+    id: string;
+    fullName: string;
+    email: string;
+    role: UserRoleEnum;
+  } | null = null;
   let createdCompany: any = null;
 
   // Prefer company flow if company info provided (per requirement)
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async tx => {
     if (hasCompany) {
       // Check company email uniqueness
       // const existingCompanyUser = await tx.user.findUnique({
@@ -223,11 +227,11 @@ const registerUserIntoDB = async (payload: {
   const { otp, otpToken } = generateOtpToken(emailForOtp);
 
   // send OTP email
-    const recipientName = (createdUser as any)?.fullName ?? '';
-    await emailSender(
-      'Verify Your Email',
-      emailForOtp,
-      `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+  const recipientName = (createdUser as any)?.fullName ?? '';
+  await emailSender(
+    'Verify Your Email',
+    emailForOtp,
+    `<div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
           <table width="100%" style="border-collapse: collapse;">
             <tr>
               <td style="background-color: #46BEF2; padding: 20px; text-align: center; color: #000000; border-radius: 10px 10px 0 0;">
@@ -252,7 +256,7 @@ const registerUserIntoDB = async (payload: {
             </tr>
           </table>
         </div>`,
-    );
+  );
 
   // return token for frontend verification
   return otpToken;
@@ -324,6 +328,7 @@ const getMyProfileFromDB = async (id: string) => {
       phoneNumber: true,
       address: true,
       image: true,
+      vatId: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -353,11 +358,12 @@ const getCompanyProfileFromDB = async (id: string) => {
     role: Profile?.role,
     dateOfBirth: Profile?.dateOfBirth ?? null,
     phoneNumber: Profile?.phoneNumber ?? null,
-    companyName: Profile?.Company?.[0]?.companyName ?? null,
+    vatId: Profile?.vatId ?? null,
+    fullName: Profile?.Company?.[0]?.companyName ?? null,
     image: Profile?.image ?? null,
-    companyEmail: Profile?.Company?.[0]?.companyEmail ?? null,
-    companyAddress: Profile?.Company?.[0]?.companyAddress ?? null,
-    companyVatId: Profile?.Company?.[0]?.companyVatId ?? null,
+    email: Profile?.Company?.[0]?.companyEmail ?? null,
+    address: Profile?.Company?.[0]?.companyAddress ?? null,
+    // vatId: Profile?.Company?.[0]?.companyVatId ?? null,
   };
 };
 
@@ -427,7 +433,7 @@ const updateMyProfileForCompanyIntoDB = async (id: string, payload: any) => {
     if (payload.companyAddress) {
       companyData.companyAddress = payload.companyAddress;
       delete userData.companyAddress;
-    } 
+    }
     if (payload.companyVatId) {
       companyData.companyVatId = payload.companyVatId;
       delete userData.companyVatId;
@@ -443,9 +449,11 @@ const updateMyProfileForCompanyIntoDB = async (id: string, payload: any) => {
       });
       await transactionClient.user.update({
         where: { id },
-        data: { 
+        data: {
           fullName: companyData.companyName || existingUser.fullName,
-          isProfileComplete: true },
+          isProfileComplete: true,
+          vatId: companyData.companyVatId || existingUser.vatId || null,
+        },
       });
     }
 
@@ -481,7 +489,6 @@ const updateMyProfileForCompanyIntoDB = async (id: string, payload: any) => {
     companyAddress: updatedUser?.Company?.[0]?.companyAddress ?? null,
     companyVatId: updatedUser?.Company?.[0]?.companyVatId ?? null,
   };
-
 };
 
 const updateUserRoleStatusIntoDB = async (id: string, payload: any) => {
@@ -520,7 +527,7 @@ const changePassword = async (
   );
 
   if (!isCorrectPassword) {
-    throw new AppError(httpStatus.BAD_REQUEST,'Password incorrect!');
+    throw new AppError(httpStatus.BAD_REQUEST, 'Password incorrect!');
   }
 
   const newPasswordSameAsOld: boolean = await bcrypt.compare(
@@ -555,6 +562,35 @@ const forgotPassword = async (payload: { email: string }) => {
   const userData = await prisma.user.findUnique({
     where: { email: payload.email },
   });
+  if (userData?.role === UserRoleEnum.EMPLOYEE) {
+    const employeeCred = await prisma.employeeCredential.findUnique({
+      where: { loginEmail: payload.email },
+    });
+    if (!employeeCred) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Employee credentials not found!',
+      );
+    }
+    if (!employeeCred.companyId) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Employee not associated with any company!',
+      );
+    }
+
+    const company = await prisma.user.findUnique({
+      where: { id: employeeCred.companyId },
+    });
+    if (!company?.email) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Associated company email not found!',
+      );
+    }
+
+    userData.email = company.email;
+  }
 
   if (!userData) {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
@@ -607,6 +643,35 @@ const resendOtpIntoDB = async (payload: { email: string }) => {
   const userData = await prisma.user.findUnique({
     where: { email: payload.email },
   });
+  if (userData?.role === UserRoleEnum.EMPLOYEE) {
+    const employeeCred = await prisma.employeeCredential.findUnique({
+      where: { loginEmail: payload.email },
+    });
+    if (!employeeCred) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Employee credentials not found!',
+      );
+    }
+    if (!employeeCred.companyId) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Employee not associated with any company!',
+      );
+    }
+
+    const company = await prisma.user.findUnique({
+      where: { id: employeeCred.companyId },
+    });
+    if (!company?.email) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        'Associated company email not found!',
+      );
+    }
+
+    userData.email = company.email;
+  }
 
   if (!userData) {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found!');
@@ -722,7 +787,7 @@ const verifyOtpInDB = async (bodyData: {
   otp: number;
   otpToken: string; // <-- token from frontend
 }) => {
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async tx => {
     const userData = await tx.user.findUnique({
       where: { email: bodyData.email },
     });
