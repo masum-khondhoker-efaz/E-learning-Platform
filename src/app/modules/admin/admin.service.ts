@@ -15,6 +15,7 @@ import {
   combineQueries,
 } from '../../utils/searchFilter';
 import { ISearchAndFilterOptions } from '../../interface/pagination.type';
+import { create } from 'domain';
 
 
 const getDashboardStatsFromDb = async () => {
@@ -235,57 +236,30 @@ const updateUserStatusIntoDb = async (userId: string) => {
 const getAllUsersWithCompanyFromDb = async (
   options: ISearchAndFilterOptions,
 ) => {
-  // Convert string values to appropriate types
-  if (options.status !== undefined) options.status = String(options.status);
-
+  //fetch all companies with details
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
-  // Build search query for user fields and related company fields
-  let searchQuery = {};
-  if (options.searchTerm) {
-    searchQuery = {
-      OR: [
-        { fullName: { contains: options.searchTerm, mode: 'insensitive' } },
-        { email: { contains: options.searchTerm, mode: 'insensitive' } },
-        {
-          Company: {
-            some: {
-              OR: [
-                {
-                  companyName: {
-                    contains: options.searchTerm,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  companyEmail: {
-                    contains: options.searchTerm,
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  companyAddress: {
-                    contains: options.searchTerm,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            },
-          },
-        },
-      ],
-    };
-  }
+  // Build search query for user and company fields
+  const searchFields = [
+    'fullName',
+    'email',
+    'Company.companyName',
+    'Company.companyEmail',
+    'Company.companyAddress',
+  ];
+  const searchQuery = buildSearchQuery({
+    searchTerm: options.searchTerm,
+    searchFields,
+  });
 
   // Build filter query
   const filterFields: Record<string, any> = {
-    role: UserRoleEnum.STUDENT, // Always filter by STUDENT role
+    role: UserRoleEnum.COMPANY, // Always filter by COMPANY role
     ...(options.status && { status: options.status }),
     ...(options.dateOfBirth && { dateOfBirth: options.dateOfBirth }),
-    // Ensure user has at least one company
-    Company: {
-      some: {}, // This means "has at least one company"
-    },
+    ...(options.role && { role: options.role }),
+    ...(options.fullName && { fullName: options.fullName }),
+    ...(options.email && { email: options.email }),
   };
   const filterQuery = buildFilterQuery(filterFields);
 
@@ -311,32 +285,46 @@ const getAllUsersWithCompanyFromDb = async (
       dateOfBirth: true,
       role: true,
       status: true,
+      image: true,
       createdAt: true,
       Company: {
         select: {
           id: true,
-          userId: true,
           companyName: true,
           companyEmail: true,
           companyAddress: true,
           companyVatId: true,
           createdAt: true,
-          updatedAt: true,
         },
       },
     },
   });
 
-  // flatten  the results to include company details at the top level
-  const flattenedUsers = users.map(user => {
-    const { Company, ...userData } = user;
-    return {
-      ...userData,
-      company: Company && Company.length > 0 ? Company[0] : null,
-    };
-  });
+  // flatten the result
+    const flattenedUsers = users.map(user => ({
+      id: user.id,
+      companyName: user.fullName,
+      companyEmail: user.email,
+      // dateOfBirth: user.dateOfBirth,
+      role: user.role,
+      // status: user.status,
+      createdAt: user.createdAt,
+      companyVatId: Array.isArray(user.Company)
+        ? user.Company[0]?.companyVatId ?? null
+        : (user.Company as any)?.companyVatId ?? null,
 
-  return formatPaginationResponse(flattenedUsers, total, page, limit);
+      registrationDate: Array.isArray(user.Company)
+        ? user.Company[0]?.createdAt ?? null
+        : (user.Company as any)?.createdAt ?? null,
+      companyAddress: Array.isArray(user.Company)
+        ? user.Company[0]?.companyAddress ?? null
+        : (user.Company as any)?.companyAddress ?? null,
+        companyImage: user.image || null,
+    }));
+  
+  
+    return formatPaginationResponse(flattenedUsers, total, page, limit); 
+
 };
 
 const getAUsersWithCompanyFromDb = async (userId: string) => {
@@ -476,63 +464,68 @@ const getAllCoursesFromDb = async ( options: ISearchAndFilterOptions) => {
 const addUserWithCourseAccessIntoDb = async (
   employeeData: IUserAddInterface,
 ) => {
-  const user = await prisma.user.findUnique({
-    where: { email: employeeData.email },
-  });
-  if (user) {
-    throw new AppError(httpStatus.NOT_FOUND, 'User already exists');
-  }
-
-  const hashedPassword = await bcrypt.hash(employeeData.password, 12);
-
-  const newUser = await prisma.user.create({
-    data: {
-      fullName: employeeData.fullName,
-      email: employeeData.email,
-      password: hashedPassword,
-      address: employeeData.address,
-      phoneNumber: employeeData.phoneNumber,
-      dateOfBirth: employeeData.dateOfBirth,
-      role: UserRoleEnum.EMPLOYEE,
-      status: UserStatus.ACTIVE,
-      isVerified: true,
-      isProfileComplete: true,
-    },
-  });
-  if (!newUser) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create user');
-  }
-
-  // Assign course access if courseId is provided
-  if (employeeData.courseId) {
-    const course = await prisma.course.findUnique({
-      where: { id: employeeData.courseId },
+  return await prisma.$transaction(async (tx) => {
+    // Check existing user within transaction
+    const existingUser = await tx.user.findUnique({
+      where: { email: employeeData.email },
     });
-    if (!course) {
-      throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+    if (existingUser) {
+      throw new AppError(httpStatus.NOT_FOUND, 'User already exists');
     }
 
-    await prisma.employeeCredential.create({
+    const hashedPassword = await bcrypt.hash(employeeData.password, 12);
+
+    // Create user within transaction
+    const newUser = await tx.user.create({
       data: {
-        userId: newUser.id,
-        courseId: employeeData.courseId,
-        loginEmail: employeeData.email,
+        fullName: employeeData.fullName,
+        email: employeeData.email,
         password: hashedPassword,
-        paymentStatus: PaymentStatus.COMPLETED,
+        address: employeeData.address,
+        phoneNumber: employeeData.phoneNumber,
+        dateOfBirth: employeeData.dateOfBirth,
+        role: UserRoleEnum.EMPLOYEE,
+        status: UserStatus.ACTIVE,
+        isVerified: true,
+        isProfileComplete: true,
       },
     });
-  }
+    if (!newUser) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create user');
+    }
 
-  return {
-    id: newUser.id,
-    fullName: newUser.fullName,
-    email: newUser.email,
-    role: newUser.role,
-    status: newUser.status,
-    courseId: employeeData.courseId || null,
-    createdAt: newUser.createdAt, 
-  };
-}
+    // Assign course access if courseId is provided, still inside transaction
+    if (employeeData.courseId) {
+      const course = await tx.course.findUnique({
+        where: { id: employeeData.courseId },
+      });
+      if (!course) {
+        throw new AppError(httpStatus.NOT_FOUND, 'Course not found');
+      }
+
+      await tx.employeeCredential.create({
+        data: {
+          userId: newUser.id,
+          courseId: employeeData.courseId,
+          loginEmail: employeeData.email,
+          password: hashedPassword,
+          paymentStatus: PaymentStatus.COMPLETED,
+        },
+      });
+    }
+
+    // Transaction will commit if we reach here; any thrown error rolls back
+    return {
+      id: newUser.id,
+      fullName: newUser.fullName,
+      email: newUser.email,
+      role: newUser.role,
+      status: newUser.status,
+      courseId: employeeData.courseId || null,
+      createdAt: newUser.createdAt,
+    };
+  });
+};
 
 const getAllEnrolledStudentsFromDb = async () => {
   const result = await prisma.enrolledCourse.findMany({
