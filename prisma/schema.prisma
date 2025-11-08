@@ -250,7 +250,7 @@ model Lesson {
   title         String
   content       String
   order         Int
-  videoDuration Int? // Duration in seconds (if video content)
+  videoDuration Float? // Duration in seconds (if video content)
   contentType   String? // e.g., "video", "article"
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

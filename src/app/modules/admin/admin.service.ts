@@ -16,9 +16,10 @@ import {
   combineQueries,
 } from '../../utils/searchFilter';
 import { ISearchAndFilterOptions } from '../../interface/pagination.type';
-import { create } from 'domain';
 
-const getDashboardStatsFromDb = async () => {
+// ...existing code...
+const getDashboardStatsFromDb = async (year?: string) => {
+  const yearNum = year ? parseInt(year, 10) : undefined;
   // total users count without admin and super admin
   const totalUsers = await prisma.user.count({
     where: {
@@ -48,6 +49,41 @@ const getDashboardStatsFromDb = async () => {
     },
   });
 
+  // determine date range and months array
+  let startDate: Date;
+  let endDate: Date;
+  const months: { label: string; year: number; month: number; total: number }[] = [];
+
+  if (yearNum !== undefined && Number.isInteger(yearNum)) {
+    // Year-wise: Jan..Dec of provided year
+    startDate = new Date(yearNum, 0, 1, 0, 0, 0, 0);
+    endDate = new Date(yearNum, 11, 31, 23, 59, 59, 999);
+    for (let m = 0; m < 12; m++) {
+      const d = new Date(yearNum, m, 1);
+      months.push({
+        label: d.toLocaleString('default', { month: 'short', year: 'numeric' }),
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        total: 0,
+      });
+    }
+  } else {
+    // Default: last 12 months (same as previous behavior)
+    const now = new Date();
+    endDate = now;
+    startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    for (let i = 10; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        label: d.toLocaleString('default', { month: 'short', year: 'numeric' }),
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        total: 0,
+      });
+    }
+  }
+
+  // total Income growth grouped by createdAt within the date range
   const earningGrowth = await prisma.payment.groupBy({
     by: ['createdAt'],
     _sum: {
@@ -56,47 +92,12 @@ const getDashboardStatsFromDb = async () => {
     where: {
       status: PaymentStatus.COMPLETED,
       createdAt: {
-        gte: new Date(new Date().setMonth(new Date().getMonth() - 1)), // Last month
+        gte: startDate,
+        lte: endDate,
       },
     },
     orderBy: { createdAt: 'asc' },
   });
-
-  const userGrowth = await prisma.user.groupBy({
-    by: ['createdAt', 'role'],
-    _count: {
-      id: true,
-    },
-    where: {
-      role: {
-        in: [UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE, UserRoleEnum.COMPANY],
-      },
-      status: UserStatus.ACTIVE,
-      createdAt: {
-        gte: new Date(new Date().setMonth(new Date().getMonth() - 1)), // Last month
-      },
-    },
-    orderBy: [{ createdAt: 'asc' }, { role: 'asc' }],
-  });
-
-  // Prepare last 12 months labels
-  interface MonthEarning {
-    label: string;
-    year: number;
-    month: number;
-    total: number;
-  }
-  const months: MonthEarning[] = [];
-  const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push({
-      label: d.toLocaleString('default', { month: 'short', year: 'numeric' }), // e.g. "Jan 2024"
-      year: d.getFullYear(),
-      month: d.getMonth(),
-      total: 0,
-    });
-  }
 
   // Map earningGrowth to month index
   earningGrowth.forEach(item => {
@@ -109,9 +110,27 @@ const getDashboardStatsFromDb = async () => {
     }
   });
 
+  // user growth grouped by createdAt and role within the date range
+  const userGrowth = await prisma.user.groupBy({
+    by: ['createdAt', 'role'],
+    _count: {
+      id: true,
+    },
+    where: {
+      role: {
+        in: [UserRoleEnum.STUDENT, UserRoleEnum.EMPLOYEE, UserRoleEnum.COMPANY],
+      },
+      status: UserStatus.ACTIVE,
+      createdAt: {
+        gte: startDate,
+        lte: endDate,
+      },
+    },
+    orderBy: [{ createdAt: 'asc' }, { role: 'asc' }],
+  });
+
   // Prepare user growth per month with month name
-  const userGrowthByMonth: { month: string; role: string; count: number }[] =
-    [];
+  const userGrowthByMonth: { month: string; role: string; count: number }[] = [];
   months.forEach(month => {
     ['STUDENT', 'COMPANY', 'EMPLOYEE'].forEach(role => {
       const count = userGrowth
@@ -141,6 +160,7 @@ const getDashboardStatsFromDb = async () => {
     userGrowth: userGrowthByMonth,
   };
 };
+// ...existing code...
 
 const getAllUsersFromDb = async (options: ISearchAndFilterOptions) => {
   // Convert string values to appropriate types
@@ -243,9 +263,11 @@ const getAllUsersWithCompanyFromDb = async (
   const searchFields = [
     'fullName',
     'email',
-    'Company.companyName',
-    'Company.companyEmail',
-    'Company.companyAddress',
+    'vatId',
+    'address',
+    // 'Company.companyName',
+    // 'Company.companyEmail',
+    // 'Company.companyAddress',
   ];
   const searchQuery = buildSearchQuery({
     searchTerm: options.searchTerm,

@@ -77,18 +77,18 @@ const getInPersonTrainingListFromDb = async (userId: string, options: ISearchAnd
           },
         },
       },
-      {
-        companyName: {
-          contains: options.searchTerm,
-          mode: 'insensitive' as const,
-        },
-      },
-      {
-        contactPersonName: {
-          contains: options.searchTerm,
-          mode: 'insensitive' as const,
-        },
-      },
+      // {
+      //   companyName: {
+      //     contains: options.searchTerm,
+      //     mode: 'insensitive' as const,
+      //   },
+      // },
+      // {
+      //   contactPersonName: {
+      //     contains: options.searchTerm,
+      //     mode: 'insensitive' as const,
+      //   },
+      // },
     ];
   }
 

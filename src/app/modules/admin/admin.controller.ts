@@ -5,7 +5,7 @@ import { adminService } from './admin.service';
 import { pickValidFields } from '../../utils/pickValidFields';
 
 const getDashboardStats = catchAsync(async (req, res) => {
-  const result = await adminService.getDashboardStatsFromDb();
+  const result = await adminService.getDashboardStatsFromDb(req.query.year as string);
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
