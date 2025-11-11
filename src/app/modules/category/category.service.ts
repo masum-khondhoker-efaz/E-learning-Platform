@@ -161,6 +161,15 @@ const updateCategoryIntoDb = async (userId: string, categoryId: string, data: an
 
 const deleteCategoryItemFromDb = async (userId: string, categoryId: string) => {
 
+  const checkAdmin = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+  });
+  if (checkAdmin?.role !== UserRoleEnum.SUPER_ADMIN || checkAdmin?.role !== UserRoleEnum.SUPER_ADMIN) {
+    throw new AppError(httpStatus.FORBIDDEN, 'Only SUPER_ADMIN and admin can delete categories');
+  }
+
 
   const existingCategory = await prisma.category.findUnique({
     where: {

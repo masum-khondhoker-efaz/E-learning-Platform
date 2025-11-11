@@ -172,7 +172,7 @@ const updateCourse = catchAsync(async (req, res) => {
   }
 
   // Handle thumbnail
-  const thumbnailFile = allFiles.find(f => f.fieldname === 'thumbnail');
+  const thumbnailFile = allFiles.find(f => f.fieldname === 'courseThumbnail');
   if (thumbnailFile) {
     if (existingCourse.courseThumbnail) {
       await deleteFileFromSpace(existingCourse.courseThumbnail);
