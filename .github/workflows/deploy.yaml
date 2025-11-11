@@ -52,17 +52,17 @@ jobs:
          ENV_FILE: ${{ secrets.ENV_FILE }}
         run: |
           # Create Deployment Directory
-          ssh $EC2_USER@$EC2_HOST "mkdir -p ~/hatem_backend"
+          ssh $EC2_USER@$EC2_HOST "mkdir -p ~/e-learning_backend"
 
           # Copy Files to EC2 instances
           rsync -avz \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='.github' \
-            . $EC2_USER@$EC2_HOST:~/hatem_backend/
+            . $EC2_USER@$EC2_HOST:~/e-learning_backend/
           
           # ✅ Create .env file on EC2 from the single GitHub secret
-          ssh $EC2_USER@$EC2_HOST "echo \"$ENV_FILE\" > ~/hatem_backend/.env"
+          ssh $EC2_USER@$EC2_HOST "echo \"$ENV_FILE\" > ~/e-learning_backend/.env"
           
           # install production dependencies on EC2
           ssh $EC2_USER@$EC2_HOST "cd ~/e-learning_backend && export PATH=$PATH:/run/user/1000/fnm_multishells/1854_1762841542127/bin && npm install --frozen-lockfile"
