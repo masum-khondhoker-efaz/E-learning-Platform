@@ -1,0 +1,76 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Install Node Js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.19.0
+      - name: Install Dependencies
+        run: npm install --frozen-lockfile
+      - name: Build App
+        run: npm run build  
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Install Node Js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.19.0
+      - name: Install Dependencies
+        run: npm install --frozen-lockfile
+      - name: Build App
+        run: npm run build  
+      - name: Configure SSH
+        env: 
+         SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+         EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+         mkdir -p ~/.ssh
+         echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+         chmod 600 ~/.ssh/id_rsa
+         touch ~/.ssh/known_hosts
+         ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        env: 
+         EC2_HOST: ${{ secrets.EC2_HOST }}
+         EC2_USER: ${{ secrets.EC2_USER }}
+         ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          # Create Deployment Directory
+          ssh $EC2_USER@$EC2_HOST "mkdir -p ~/e-learning_backend"
+
+          # Copy Files to EC2 instances
+          rsync -avz \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.github' \
+            . $EC2_USER@$EC2_HOST:~/e-learning_backend/
+          
+          # ✅ Create .env file on EC2 from the single GitHub secret
+          ssh $EC2_USER@$EC2_HOST "echo \"$ENV_FILE\" > ~/e-learning_backend/.env"
+          
+          # install production dependencies on EC2
+          ssh $EC2_USER@$EC2_HOST "cd ~/e-learning_backend && export PATH=$PATH:/run/user/1000/fnm_multishells/1854_1762841542127/bin && npm install --frozen-lockfile"
+          
+          # Stop existing PM2 process if it exists
+          ssh $EC2_USER@$EC2_HOST "cd ~/e-learning_backend && export PATH=$PATH:/run/user/1000/fnm_multishells/1854_1762841542127/bin && pm2 delete e-learning_backend || true"
+
+          # Start the application with PM2
+          ssh $EC2_USER@$EC2_HOST "cd ~/e-learning_backend && export PATH=$PATH:/run/user/1000/fnm_multishells/1854_1762841542127/bin && pm2 start dist/server.js --name e-learning_backend"
+  
+  
