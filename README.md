@@ -1,0 +1,35 @@
+NODE_ENV=production
+DATABASE_URL="mongodb+srv://efaz123:efaz321@cluster0.nf7qp.mongodb.net/paulina?retryWrites=true&w=majority"
+# DATABASE_URL="mongodb://127.0.0.1:27017/kumba?replicaSet=rs0"
+PORT=6080
+
+SUPER_ADMIN_PASSWORD=12345678
+BCRYPT_SALT_ROUNDS=12
+BACKEND_BASE_URL = "http://localhost:6080"
+JWT_OTP_EXPIRES_IN="5m"
+JWT_OTP_SECRET="otpsecret"
+JWT_ACCESS_SECRET="secret"
+JWT_REFRESH_SECRET="secret"
+JWT_ACCESS_EXPIRES_IN="1d"
+JWT_REFRESH_EXPIRES_IN="3d"
+EMAIL="efazkh@gmail.com"
+APP_PASS="hoae hzco akcg egik"
+
+DO_SPACE_ENDPOINT="https://nyc3.digitaloceanspaces.com"
+DO_SPACE_ORIGIN_ENDPOINT="https://lerirides.nyc3.digitaloceanspaces.com"
+DO_SPACE_ACCESS_KEY="DO00K744EMCE7GMZQACU"
+DO_SPACE_SECRET_KEY="b+c/Wh/XUfPJYCEnU7o4yt3LW0FBfYgnlzSulNT7Tb0"
+DO_SPACE_BUCKET="lerirides"
+
+
+STRIPE_PUBLISHABLE_KEY= "pk_test_51QI34iJ0XOKIVjdLj7VafFQHMAstmA7jU5bULEtojkH66hADhQ9i2Q0LIjwMgqHqmdNbHn8Bk5GyU00UVA74WVSc007dl3XLhN"
+# STRIPE_PUBLISHABLE_KEY = "pk_live_51QpMURJa3c5ODvyWRW7jQtdQVdmRTqyh68I5oqLm1Ggis12rFYfWCXZkyLQ1xcaDs3FjXaif8WnSvdnslyJKlXKJ00xgdA3KVF"
+STRIPE_SECRET_KEY = "sk_test_51QI34iJ0XOKIVjdLYqHo0STJo6M40KRoG9QDZMB0PFESyvJJz8yfDcrBfd6BbbDKbXHbLUpuB1048rXxuqppAfbQ00CFjTQBbA"
+# STRIPE_SECRET_KEY = "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"
+
+# FRONTEND_BASE_URL="https://random-id.ngrok-free.app"
+FRONTEND_BASE_URL="https://e-learning-website-puce.vercel.app/en"
+#test
+# STRIPE_WEBHOOK_SECRET="whsec_I4xlPWVRMWbV7PucBbT7oxOjWdmMNKw1"
+#live
+STRIPE_WEBHOOK_SECRET="whsec_67e09d25eb5162121ad520d26dfa8d68005884eb7e374a03172fc9521e26d0f0"
