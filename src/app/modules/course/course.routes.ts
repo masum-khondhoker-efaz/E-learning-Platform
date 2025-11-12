@@ -18,11 +18,7 @@ router.post(
   courseController.createCourse,
 );
 
-router.get(
-  '/popular-courses',
-  courseController.getPopularCourses,
-);
-
+router.get('/popular-courses', courseController.getPopularCourses);
 
 router.get(
   '/details/:id',
@@ -34,6 +30,11 @@ router.get('/', courseController.getCourseList);
 
 router.get('/:id', courseController.getCourseById);
 
+router.get(
+  '/admin/:id',
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  courseController.getCourseByIdForAdmin,
+);
 
 router.patch(
   '/:id',

@@ -502,6 +502,44 @@ const getCourseByIdFromDb = async (courseId: string) => {
   return formattedResult;
 };
 
+const getCourseByIdForAdminFromDb = async (userId: string, courseId: string) => {
+  const result = await prisma.course.findUnique({
+    where: {
+      id: courseId,
+    },
+    include: {  
+      category: {
+        select: {
+          name: true,
+        },
+      },
+      Section: {
+        include: {
+          Lesson: {
+            select: { title: true, order: true,content: true, contentType: true, videoDuration: true },
+            orderBy: { order: 'asc' },
+          },
+
+          Test: { select: { id: true, title: true }  } ,
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      },
+    },
+  });
+  if (!result) {
+    throw new AppError(httpStatus.NOT_FOUND, 'course not found');
+  }
+  // Flatten category.name into the course object
+  const { category, ...rest } = result;
+  const formattedResult = {
+    categoryName: category?.name ?? null,
+    ...rest,
+  };
+  return formattedResult;
+}
+
 const updateCourseIntoDb = async (
   courseId: string,
   userId: string,
@@ -851,6 +889,7 @@ export const courseService = {
   createCourseIntoDb,
   getPopularCoursesFromDb,
   getACourseByIdFromDb,
+  getCourseByIdForAdminFromDb,
   getCourseListFromDb,
   getCourseByIdFromDb,
   updateCourseIntoDb,

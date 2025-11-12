@@ -142,6 +142,20 @@ const getCourseById = catchAsync(async (req, res) => {
   });
 });
 
+const getCourseByIdForAdmin = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const result = await courseService.getCourseByIdForAdminFromDb(
+    user.id,
+    req.params.id,
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Course details for admin retrieved successfully',
+    data: result,
+  });
+});
+
 
 const updateCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -245,6 +259,7 @@ const deleteCourse = catchAsync(async (req, res) => {
 export const courseController = {
   createCourse,
   getPopularCourses,
+  getCourseByIdForAdmin,
   getACourseById,
   getCourseList,
   getCourseById,
