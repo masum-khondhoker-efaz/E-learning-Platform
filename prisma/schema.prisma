@@ -192,6 +192,7 @@ model Course {
   totalLessons           Int        @default(0)
   totalSections          Int        @default(0)
   totalDuration          Float      @default(0) // in hours
+  totalTests             Int        @default(0)
   avgRating              Float      @default(0)
   totalRatings           Int        @default(0)
   totalEnrollments       Int        @default(0)

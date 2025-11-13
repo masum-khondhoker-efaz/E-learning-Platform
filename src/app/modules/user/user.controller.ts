@@ -3,8 +3,9 @@ import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import { UserServices } from '../user/user.service';
 import AppError from '../../errors/AppError';
-import { uploadFileToSpace } from '../../utils/multipleFile';
+// import { uploadFileToSpace } from '../../utils/multipleFile';
 import { UserRoleEnum } from '@prisma/client';
+import { uploadFileToS3 } from '../../utils/multipleFile';
 
 const registerUser = catchAsync(async (req, res) => {
   const result = await UserServices.registerUserIntoDB(req.body);
@@ -170,7 +171,7 @@ const updateProfileImage = catchAsync(async (req, res) => {
   }
 
   // Upload to DigitalOcean and get contentType
-  const { url: fileUrl, contentType } = await uploadFileToSpace(
+  const { url: fileUrl, contentType } = await uploadFileToS3(
     file,
     'user-profile-images',
   );

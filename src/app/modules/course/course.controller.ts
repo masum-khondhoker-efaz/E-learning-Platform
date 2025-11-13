@@ -2,10 +2,11 @@ import httpStatus from 'http-status';
 import sendResponse from '../../utils/sendResponse';
 import catchAsync from '../../utils/catchAsync';
 import { courseService } from './course.service';
-import { uploadFileToSpace } from '../../utils/multipleFile';
+// import { uploadFileToSpace } from '../../utils/multipleFile';
 import { deleteFileFromSpace } from '../../utils/deleteImage';
 import { pickValidFields } from '../../utils/pickValidFields';
 import AppError from '../../errors/AppError';
+import { uploadFileToS3 } from '../../utils/multipleFile';
 
 
 const createCourse = catchAsync(async (req, res) => {
@@ -24,21 +25,21 @@ const createCourse = catchAsync(async (req, res) => {
   // Find thumbnail
   const thumbnailFile = allFiles.find(f => f.fieldname === 'courseThumbnail');
   if (thumbnailFile) {
-    const { url } = await uploadFileToSpace(thumbnailFile, 'courses/thumbnails');
+    const { url } = await uploadFileToS3(thumbnailFile, 'courses/thumbnails');
     body.courseThumbnail = url;
   }
 
   // Find instructor image
   const instructorFile = allFiles.find(f => f.fieldname === 'instructorImage');
   if (instructorFile) {
-    const { url } = await uploadFileToSpace(instructorFile, 'courses/instructors');
+    const { url } = await uploadFileToS3(instructorFile, 'courses/instructors');
     body.instructorImage = url;
   }
 
   // Lessons (dynamic)
   const lessonFiles = allFiles.filter(f => f.fieldname.startsWith('lesson'));
   for (const file of lessonFiles) {
-    const { url, contentType, videoDuration } = await uploadFileToSpace(file, 'courses/lessons');
+    const { url, contentType, videoDuration } = await uploadFileToS3(file, 'courses/lessons');
     uploads.lessons[file.fieldname] = { url, contentType, videoDuration };
   }
 
@@ -191,7 +192,7 @@ const updateCourse = catchAsync(async (req, res) => {
     if (existingCourse.courseThumbnail) {
       await deleteFileFromSpace(existingCourse.courseThumbnail);
     }
-    const { url } = await uploadFileToSpace(thumbnailFile, 'courses/thumbnails');
+    const { url } = await uploadFileToS3(thumbnailFile, 'courses/thumbnails');
     bodyData.courseThumbnail = url;
   }
 
@@ -201,14 +202,14 @@ const updateCourse = catchAsync(async (req, res) => {
     if (existingCourse.instructorImage) {
       await deleteFileFromSpace(existingCourse.instructorImage);
     }
-    const { url } = await uploadFileToSpace(instructorFile, 'courses/instructors');
+    const { url } = await uploadFileToS3(instructorFile, 'courses/instructors');
     bodyData.instructorImage = url;
   }
 
   // Handle lesson files
   const lessonFiles = allFiles.filter(f => f.fieldname.startsWith('lesson'));
   for (const file of lessonFiles) {
-    const { url, contentType, videoDuration } = await uploadFileToSpace(file, 'courses/lessons');
+    const { url, contentType, videoDuration } = await uploadFileToS3(file, 'courses/lessons');
     uploads.lessons[file.fieldname] = { url, contentType, videoDuration };
   }
 
@@ -240,6 +241,54 @@ const updateCourse = catchAsync(async (req, res) => {
   });
 });
 
+const updateCourseContent = catchAsync(async (req, res) => {
+  const user = req.user as any;
+  const { id: courseId } = req.params;
+const { body } = req;
+  // 1️⃣ Parse JSON body safely
+  // let bodyData;
+  // try {
+  //   bodyData = req.body.bodyData ? JSON.parse(req.body.bodyData) : req.body;
+  // } catch {
+  //   throw new AppError(httpStatus.BAD_REQUEST, 'Invalid JSON format in bodyData');
+  // }
+
+  const { sections } = body;
+  if (!Array.isArray(sections) || sections.length === 0) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Sections array is required and cannot be empty');
+  }
+
+  // 2️⃣ Handle uploaded files (lessons, tests, etc.)
+  const allFiles = (req.files as Express.Multer.File[]) || [];
+  const uploads: Record<string, { url: string; contentType?: string; videoDuration?: number | null }> = {};
+
+  if (allFiles.length > 0) {
+    for (const file of allFiles) {
+      const { url, contentType, videoDuration } = await uploadFileToS3(file, 'courses/lessons');
+      uploads[file.fieldname] = { url, contentType, videoDuration };
+      console.log(`Uploaded file ${file.fieldname} to ${url}, and contentType: ${contentType} with duration: ${videoDuration}`);
+    }
+  }
+
+  // 3️⃣ Delegate to service (this will handle DB updates, additions, removals, etc.)
+  const result = await courseService.updateCourseContentInDb({
+    courseId,
+    userId: user.id,
+    sections,
+    uploads,
+  });
+
+  // 4️⃣ Respond to client
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Course content updated successfully',
+    data: result,
+  });
+});
+
+
+
 
 const deleteCourse = catchAsync(async (req, res) => {
   const user = req.user as any;
@@ -264,5 +313,6 @@ export const courseController = {
   getCourseList,
   getCourseById,
   updateCourse,
+  updateCourseContent,
   deleteCourse,
 };

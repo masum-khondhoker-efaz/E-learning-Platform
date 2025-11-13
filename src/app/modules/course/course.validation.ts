@@ -82,7 +82,16 @@ const updateCourseSchema = z.object({
   }),
 });
 
+const updateCourseContentSchema = z.object({
+  body: z.object({
+    sections: z
+      .array(sectionUpdateSchema)
+      .min(1, 'At least one section is required'),
+  }),
+});
+
 export const courseValidation = {
   createCourseSchema,
   updateCourseSchema,
+  updateCourseContentSchema,
 };

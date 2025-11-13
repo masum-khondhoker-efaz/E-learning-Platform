@@ -37,6 +37,15 @@ router.get(
 );
 
 router.patch(
+  '/content-update/:id',
+  multerUploadMultiple.any(),
+  parseBody,
+  auth(UserRoleEnum.SUPER_ADMIN, UserRoleEnum.ADMIN),
+  // validateRequest(courseValidation.updateCourseContentSchema),
+  courseController.updateCourseContent,
+);
+
+router.patch(
   '/:id',
   multerUploadMultiple.any(),
   parseBody,
@@ -44,6 +53,8 @@ router.patch(
   validateRequest(courseValidation.updateCourseSchema),
   courseController.updateCourse,
 );
+
+
 
 router.delete(
   '/:id',
