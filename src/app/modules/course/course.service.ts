@@ -520,7 +520,7 @@ const getCourseByIdForAdminFromDb = async (
         include: {
           Lesson: {
             select: {
-              id:true,
+              id: true,
               title: true,
               order: true,
               content: true,
@@ -905,6 +905,13 @@ const updateCourseContentInDb = async ({
             },
           });
         } else if (action === 'remove' && lessonId) {
+          // Delete lesson content from cloud if exists
+          const existingLesson = await tx.lesson.findUnique({
+            where: { id: lessonId },
+          });
+          if (existingLesson && existingLesson.content) {
+            await deleteFileFromSpace(existingLesson.content);
+          }
           await tx.lesson.delete({ where: { id: lessonId } });
         }
       }
