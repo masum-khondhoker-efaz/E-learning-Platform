@@ -520,6 +520,7 @@ const getCourseByIdForAdminFromDb = async (
         include: {
           Lesson: {
             select: {
+              id:true,
               title: true,
               order: true,
               content: true,
@@ -540,10 +541,11 @@ const getCourseByIdForAdminFromDb = async (
   if (!result) {
     throw new AppError(httpStatus.NOT_FOUND, 'course not found');
   }
-  // Flatten category.name into the course object
-  const { category, ...rest } = result;
+  // Flatten category.name into the course object and exclude totalDuration from rest
+  const { category, totalDuration, ...rest } = result;
   const formattedResult = {
     categoryName: category?.name ?? null,
+    totalDurationInHours: (totalDuration / 60).toFixed(2), // convert to hours
     ...rest,
   };
   return formattedResult;
