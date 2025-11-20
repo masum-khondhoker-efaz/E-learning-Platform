@@ -86,6 +86,53 @@ const authorizePaymentWithStripeCheckout = async (
   if (!customerDetails) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Customer not found');
   }
+
+  // check if courses are exist or not in db also calculate total amount with discount if any  also add vat if applicable
+  const courseItems = await prisma.checkoutItem.findMany({
+    where: { checkoutId },
+    include: {
+      course: {
+        select: { price: true, id: true, courseTitle: true, vatPercentage: true, discountPrice: true  },
+      },
+    },
+  });
+
+  if (courseItems.length === 0) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'No courses found in the checkout',
+    );
+  }
+
+  const courseIds = courseItems.map((item) => item.course.id);
+  
+  // Verify that all courses exist
+  const existingCourses = await prisma.course.findMany({
+    where: { id: { in: courseIds } },
+  });
+  if (existingCourses.length !== courseIds.length) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'One or more courses in the checkout do not exist',
+    );
+  }
+
+
+  // check vat applicable for each courses from the courseItems
+  let totalAmount = 0;
+  for (const item of courseItems) {
+    let coursePrice = item.course.discountPrice ? item.course.discountPrice : item.course.price;
+    // apply vat if customer has provided vatId
+    if (customerDetails.vatId) {
+      const vatAmount = coursePrice + (coursePrice * item.course.vatPercentage) /100 ; // get vat percentage from db 
+      // console.log(`Original price for course ${item.course.courseTitle}: ${coursePrice}`);
+      coursePrice = vatAmount;
+      // console.log(`VAT of ${item.course.vatPercentage}% applied to course ${item.course.courseTitle}. New price: ${coursePrice}`);
+    }
+    totalAmount += coursePrice;
+  }
+
+
   //checkout exists and belongs to user
   const findCheckout = await prisma.checkout.findFirst({
     where: {
@@ -135,7 +182,7 @@ const authorizePaymentWithStripeCheckout = async (
           name: `Courses: ${findCheckout.items.map(item => item.course.courseTitle).join(', ')}`,
           description: `Access to ${findCheckout.items.map(item => item.course.courseTitle).join(', ')} course content`,
         },
-        unit_amount: Math.round(findCheckout.totalAmount * 100),
+        unit_amount: Math.round(totalAmount * 100),
       },
       quantity: 1,
     },

@@ -6,6 +6,220 @@ import * as bcrypt from 'bcrypt';
 import { send } from 'process';
 import emailSender from '../../utils/emailSender';
 
+function threeDigitsToWords(n: number): string {
+  const ones = [
+    '',
+    'one',
+    'two',
+    'three',
+    'four',
+    'five',
+    'six',
+    'seven',
+    'eight',
+    'nine',
+  ];
+  const teens = [
+    'ten',
+    'eleven',
+    'twelve',
+    'thirteen',
+    'fourteen',
+    'fifteen',
+    'sixteen',
+    'seventeen',
+    'eighteen',
+    'nineteen',
+  ];
+  const tens = [
+    '',
+    '',
+    'twenty',
+    'thirty',
+    'forty',
+    'fifty',
+    'sixty',
+    'seventy',
+    'eighty',
+    'ninety',
+  ];
+
+  let out = '';
+  if (n >= 100) {
+    out += ones[Math.floor(n / 100)] + ' hundred';
+    n = n % 100;
+    if (n) out += ' ';
+  }
+  if (n >= 20) {
+    out += tens[Math.floor(n / 10)];
+    n = n % 10;
+    if (n) out += '-' + ones[n];
+  } else if (n >= 10) {
+    out += teens[n - 10];
+  } else if (n > 0) {
+    out += ones[n];
+  } else if (!out) {
+    out = 'zero';
+  }
+  return out;
+}
+
+// helper: convert whole number to words (English) up to trillions
+function integerToWords(n: number): string {
+  if (n === 0) return 'zero';
+  const parts: string[] = [];
+  const scales = [
+    { value: 1_000_000_000_000, name: 'trillion' },
+    { value: 1_000_000_000, name: 'billion' },
+    { value: 1_000_000, name: 'million' },
+    { value: 1_000, name: 'thousand' },
+  ];
+  for (const s of scales) {
+    if (n >= s.value) {
+      const cnt = Math.floor(n / s.value);
+      parts.push(`${threeDigitsToWords(cnt)} ${s.name}`);
+      n = n % s.value;
+    }
+  }
+  if (n > 0) {
+    parts.push(threeDigitsToWords(n));
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+// Convert VAT % from "20" to 0.20
+function normalizeVat(v: number) {
+  return v > 1 ? v / 100 : v;
+}
+
+// Calculate price ex VAT, VAT amount and final price
+function calculatePrices(
+  basePrice: number,
+  discount?: number,
+  vatPerc?: number,
+) {
+  const vat = normalizeVat(vatPerc ?? 0);
+
+  // Step 1: Apply discount if available (discount and basePrice are net, VAT not included)
+  const finalBase =
+    typeof discount === 'number' && discount > 0 && discount < basePrice
+      ? discount
+      : basePrice;
+
+  // Since basePrice is net (VAT not included):
+  const priceExVat = finalBase;
+
+  // VAT amount based on net price (vat is already normalized to a decimal, e.g. 0.23)
+  const vatAmount = priceExVat * vat;
+
+  // Price including VAT
+  const priceIncVat = priceExVat * (1 + vat);
+
+  return {
+    base: basePrice,
+    finalBase,
+    priceExVat,
+    vatAmount,
+    priceIncVat,
+  };
+}
+
+async function generateAndAssignInvoiceNumber(): Promise<string> {
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1..12
+  const year = now.getFullYear();
+
+  // load existing company purchases' invoice payloads (may be JSON objects)
+  const companyPurchases = await prisma.companyPurchase.findMany({
+    // where: { invoice: { not: null } as any },
+    select: { invoice: true },
+  });
+
+  const enrolledCourseInvoices = await prisma.enrolledCourse.findMany({
+    // where: { invoice: { not: null } as any },
+    select: { invoice: true },
+  });
+
+  // Combine both sources so invoice sequence considers invoices issued for both company purchases and individual enrollments
+  const purchases = [...companyPurchases, ...enrolledCourseInvoices];
+
+  // pattern: seq/month/year/LE
+  const pattern = /^(\d+)\/(\d{1,2})\/(\d{4})\/LE$/;
+  let maxSeqForYear = 0;
+
+  for (const p of purchases) {
+    const inv = p.invoice as any;
+    // invoice may be stored as object where the invoice number sits under 'Invoice'
+    let invString: string | undefined;
+    if (typeof inv === 'string') {
+      invString = inv;
+    } else if (inv && typeof inv === 'object') {
+      // prefer new 'Invoice' field
+      invString =
+        (inv['Invoice'] as string) ??
+        (inv.invoice as string) ??
+        (inv.invoice_number as string) ??
+        undefined;
+    }
+    if (!invString) continue;
+    const m = invString.match(pattern);
+    if (!m) continue;
+    const seq = parseInt(m[1], 10);
+    const invYear = parseInt(m[3], 10);
+    if (invYear === year && seq > maxSeqForYear) maxSeqForYear = seq;
+  }
+
+  let candidateSeq = maxSeqForYear + 1;
+  let candidate = `${candidateSeq}/${month}/${year}/LE`;
+
+  // Ensure absolute uniqueness (in case of race/collisions) by re-checking existence
+  // Try a few times incrementing the sequence if collision is found
+  const MAX_TRIES = 50;
+  let tries = 0;
+  while (tries < MAX_TRIES) {
+    // check in-memory loaded invoices first (covers both companyPurchase and enrolledCourse)
+    const collisionInMemory = purchases.some(p => {
+      const inv = p.invoice as any;
+      if (typeof inv === 'string') return inv === candidate;
+      if (inv && typeof inv === 'object') {
+        const val =
+          (inv['Invoice'] as string) ??
+          (inv.invoice as string) ??
+          (inv.invoice_number as string) ??
+          undefined;
+        return val === candidate;
+      }
+      return false;
+    });
+
+    if (!collisionInMemory) {
+      // also check DB for a plain-string invoice stored on companyPurchase (best-effort)
+      // use JsonNullableFilter shape so Prisma accepts the filter (equals)
+      const exists = await prisma.companyPurchase.findFirst({
+        where: {
+          invoice: { equals: candidate as any },
+        } as any,
+        select: { id: true },
+      });
+
+      if (!exists) break;
+    }
+
+    candidateSeq += 1;
+    candidate = `${candidateSeq}/${month}/${year}/LE`;
+    tries += 1;
+  }
+
+  if (tries >= MAX_TRIES) {
+    throw new AppError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      'Could not generate unique invoice number',
+    );
+  }
+
+  // return the generated unique invoice number
+  return candidate;
+}
+
 const createCheckoutIntoDbForStudent = async (
   userId: string,
   data: { all?: boolean; courseIds?: string[] },
@@ -460,38 +674,107 @@ const markCheckoutPaid = async (
       );
     }
 
-    const invoiceData = {
-      Seller: courseCreator.fullName,
-      Email: courseCreator.email,
-      NIP: courseCreator.vatId,
-      'Contact Number': courseCreator.phoneNumber,
-      Address: courseCreator.address,
+    // generate a readable unique invoice number like "1/10/2025/LE" and assign it to paymentId
+    // sequence resets each year (cumulative per year). Checks existing CompanyPurchase.invoice values.
 
-      Buyer: findStudent.fullName,
-      'Buyer Email': findStudent.email,
-      'Buyer NIP': findStudent.vatId,
-      'Buyer Contact Number': findStudent.phoneNumber,
-      'Buyer Address': findStudent.address,
-      'Invoice Number': paymentId,
-      'Invoice Date': new Date().toLocaleDateString(),
-      'Course(s) Purchased': checkout.items
-        .map(item => item.course.courseTitle)
-        .join(', '),
-      'Course ID(s)': checkout.items.map(item => item.courseId).join(', '),
-      'Course Price(s)': checkout.items
-        .map(item => {
-          const price = item.course?.price ?? 0;
-          const discount = item.course?.discountPrice ?? null;
-          const effectivePrice =
-            typeof discount === 'number' && discount > 0 && discount < price
-              ? discount
-              : price;
-          return effectivePrice.toFixed(2);
-        })
-        .join(', '),
-      'Course vat rate(s) included ': checkout.items.map(_ => '23%').join(', '),
-      'Total Amount': checkout.totalAmount?.toFixed(2),
-    };
+    // call the generator so paymentId is replaced with the invoice number for the company flow
+    // call the generator to produce a unique invoice number for the company flow
+    const invoiceNumber = await generateAndAssignInvoiceNumber();
+    // 'JM': 'szt.',
+    //  'liczba sztuk': checkout.items.length,
+    // 'Cena netto': checkout.totalAmount?.toFixed(2),
+
+    const invoiceData = (() => {
+      // compute per-item prices using our helper to avoid inconsistencies
+      const items = checkout.items.map(item => {
+        const price = item.course?.price ?? 0;
+        const discount = item.course?.discountPrice ?? undefined;
+        const vatPerc = item.course?.vatPercentage ?? 0; // expect 23 or 0.0 style; calculatePrices normalizes
+        const p = calculatePrices(price, discount, vatPerc);
+        return {
+          courseId: item.courseId,
+          courseTitle: item.course?.courseTitle ?? 'Course',
+          unitExVat: p.priceExVat,
+          vatAmount: p.vatAmount,
+          unitIncVat: p.priceIncVat,
+          quantity: 1, // checkout item represents one seat; change if your model supports quantity
+          totalExVat: p.priceExVat * 1,
+          totalIncVat: p.priceIncVat * 1,
+        };
+      });
+
+      const totalExVat = items.reduce((s, it) => s + it.totalExVat, 0);
+      const totalVat = items.reduce(
+        (s, it) => s + it.vatAmount * it.quantity,
+        0,
+      );
+      const totalIncVat = items.reduce((s, it) => s + it.totalIncVat, 0);
+
+      return {
+        Seller: courseCreator.fullName,
+        Email: courseCreator.email,
+        NIP: courseCreator.vatId,
+        Address: courseCreator.address,
+
+        Buyer: findStudent.fullName,
+        'Buyer Email': findStudent.email,
+        'Buyer NIP': findStudent.vatId,
+        'Buyer Address': findStudent.address,
+
+         Invoice: invoiceNumber,
+        'Invoice Date': new Date().toLocaleDateString(),
+
+        'Course(s) Purchased': items.map(i => i.courseTitle).join(', '),
+        'Course ID(s)': items.map(i => i.courseId).join(', '),
+        'Course(s) unit': 'szt.',
+        'Number of Course(s)': items.length,
+
+        // Unit prices (ex VAT)
+        'Course(s) Price(s) (ex VAT)': items
+          .map(i => i.unitExVat.toFixed(2))
+          .join(', '),
+
+        // VAT amount per course (net)
+        'Course(s) VAT Amount(s)': items
+          .map(i => i.vatAmount.toFixed(2))
+          .join(', '),
+
+        // Price including VAT per course (unit)
+        'Course(s) Price(s) (inc VAT)': items
+          .map(i => i.unitIncVat.toFixed(2))
+          .join(', '),
+
+        // Total per course (quantity x unit ex VAT)
+        'Course(s) Total (qty x unit ex VAT)': items
+          .map(
+            i =>
+              `${i.quantity} x ${i.unitExVat.toFixed(2)} = ${i.totalExVat.toFixed(2)} (${i.courseTitle})`,
+          )
+          .join(', '),
+
+        // Totals
+        'Total Amount (ex VAT)': totalExVat.toFixed(2),
+        'Total VAT amount': totalVat.toFixed(2),
+        'Total Amount (inc VAT)': totalIncVat.toFixed(2),
+
+        // keep original Total Amount for compatibility (use ex VAT if that's how checkout.totalAmount is stored)
+        'Total Amount Payable': totalIncVat.toFixed(2),
+
+        // Proper amount in words (total invoice, using inc VAT amount)
+        'Total amount in words': `${integerToWords(Math.floor(totalIncVat))} złoty and ${Math.round(
+          (totalIncVat % 1) * 100,
+        )
+          .toString()
+          .padStart(2, '0')} groszy`,
+        'Payment Method': 'Pzrzelewy24 / Blik / Card',
+        'Company account number': '12 3456 7890 1234 5678 9012 3456',
+        'Signature of the person authorized to receive the vat invoice':
+          '____________________',
+        'Signature of the person authorized to issue the vat invoice':
+          '____________________',
+      };
+    })();
+
     const createdCredentialsForEmail: Array<{
       id: string;
       loginEmail: string;
